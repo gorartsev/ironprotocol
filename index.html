@@ -3,23 +3,43 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>IRONPROTOCOL</title>
+<title>IRON Protocol</title>
 
-<!-- PWA / iOS Home Screen -->
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="IRON">
-<meta name="theme-color" content="#0a0a0a">
+<meta name="theme-color" content="#F5F5F3">
 <link rel="manifest" href="manifest.json">
-
-<!-- iOS Icons -->
 <link rel="apple-touch-icon" href="icon-192.png">
 
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  body { background: #0a0a0a; color: #e0e0e0; font-family: -apple-system, 'SF Mono', 'Menlo', monospace; overflow-x: hidden; -webkit-font-smoothing: antialiased; }
-  /* Safe area for iPhone notch */
-  body { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
+  :root {
+    --bg: #F5F5F3;
+    --card: #FFFFFF;
+    --card-dim: #EFEFED;
+    --text: #1A1A1A;
+    --text-dim: #8A8A86;
+    --text-soft: #B8B8B4;
+    --accent: #1A1A1A;
+    --accent-soft: #E8E8E4;
+    --border: #E5E5E1;
+    --green: #4A9B5F;
+    --orange: #E67A35;
+    --red: #C94A3F;
+  }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', sans-serif;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  button { font-family: inherit; border: none; cursor: pointer; }
+  input { font-family: inherit; }
+  ::-webkit-scrollbar { display: none; }
 </style>
 </head>
 <body>
@@ -32,579 +52,882 @@
 <script type="text/babel">
 const { useState, useEffect, useCallback } = React;
 
-// ─── STORAGE WRAPPER (localStorage for standalone) ──────────────────────────
 const storage = {
-  get: (key) => { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : null; } catch { return null; } },
-  set: (key, val) => { try { localStorage.setItem(key, JSON.stringify(val)); } catch {} },
+  get: (k) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; } catch { return null; } },
+  set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
 };
 
-// ─── PROGRAM DATA ───────────────────────────────────────────────────────────
 const PHASES = [
-  { name: "РЕАДАПТАЦИЯ", weeks: [1,2,3], color: "#4CAF50" },
-  { name: "ГИПЕРТРОФИЯ", weeks: [4,5,6,7], color: "#FF9800" },
-  { name: "РАЗГРУЗКА", weeks: [8], color: "#607D8B" },
-  { name: "СИЛА 5/3/1", weeks: [9,10,11], color: "#F44336" },
-  { name: "МИНИ-РАЗГРУЗКА", weeks: [12], color: "#607D8B" },
-  { name: "ПИК", weeks: [13,14,15,16], color: "#9C27B0" },
+  { name: "Реадаптация", weeks: [1,2,3,4], dot: "#4A9B5F" },
+  { name: "Гипертрофия", weeks: [5,6,7], dot: "#E67A35" },
+  { name: "Разгрузка", weeks: [8], dot: "#8A8A86" },
+  { name: "Сила 5/3/1", weeks: [9,10,11], dot: "#C94A3F" },
+  { name: "Переход", weeks: [12], dot: "#8A8A86" },
+  { name: "Пик", weeks: [13,14,15,16], dot: "#7B5CA8" },
 ];
 
-const getPhase = (week) => PHASES.find(p => p.weeks.includes(week)) || PHASES[0];
-const TIER_COLORS = { T1: "#FF6B35", T2: "#FFB347", T3: "#7EC8E3" };
+const getPhase = (w) => PHASES.find(p => p.weeks.includes(w)) || PHASES[0];
 
-const REST_DAY_EXERCISES = [
-  { id: "r1", name: "Планка фронтальная", sets: "3×30-60 сек" },
-  { id: "r2", name: "Подъёмы ног лёжа", sets: "3×15" },
-  { id: "r3", name: "Боковая планка", sets: "2×30 сек/сторона" },
-  { id: "r4", name: "Отжимания", sets: "2-3×15-20" },
-  { id: "r5", name: "Приседания без веса", sets: "2×20" },
-  { id: "r6", name: "Мобильность (растяжка, ротации)", sets: "5-10 мин" },
+const REST_EX = [
+  { id: "r1", n: "Планка фронтальная", s: "3×30-60 сек" },
+  { id: "r2", n: "Подъёмы ног лёжа", s: "3×15" },
+  { id: "r3", n: "Боковая планка", s: "2×30 сек/сторона" },
+  { id: "r4", n: "Отжимания", s: "2-3×15-20" },
+  { id: "r5", n: "Приседания без веса", s: "2×20" },
+  { id: "r6", n: "Мобильность", s: "5-10 мин" },
 ];
 
-function generateProgram() {
-  const weeks = {};
+function buildProgram() {
+  const W = {};
 
-  weeks[1] = { days: [
-    { dayName: "Понедельник", title: "Присед + Жим", exercises: [
-      { id: "w1d1e1", tier: "T1", name: "Кубковые приседания (гантель)", sets: "3×10", rpe: "5-6" },
-      { id: "w1d1e2", tier: "T2", name: "Жим гантелей лёжа", sets: "3×10", rpe: "5-6" },
-      { id: "w1d1e3", tier: "T3", name: "Тяга в блоке к поясу сидя", sets: "2×12", rpe: "5-6" },
-      { id: "w1d1e4", tier: "T3", name: "Face Pull", sets: "2×15", rpe: "5" },
+  W[1] = { days: [
+    { name: "Присед + Жим", ex: [
+      { id: "w1d1e1", t: "T1", n: "Кубковые приседания (гантель)", s: "3×10", r: "5-6" },
+      { id: "w1d1e2", t: "T2", n: "Жим гантелей лёжа", s: "3×10", r: "5-6" },
+      { id: "w1d1e3", t: "T3", n: "Тяга в блоке к поясу сидя", s: "2×12", r: "5-6" },
+      { id: "w1d1e4", t: "T3", n: "Face Pull", s: "2×15", r: "5" },
     ]},
-    { dayName: "Среда", title: "Тяга + OHP", exercises: [
-      { id: "w1d2e1", tier: "T1", name: "Становая тяга", sets: "3×8", rpe: "5-6" },
-      { id: "w1d2e2", tier: "T2", name: "Армейский жим штангой (OHP)", sets: "3×10", rpe: "5-6" },
-      { id: "w1d2e3", tier: "T3", name: "Тяга верхнего блока", sets: "2×12", rpe: "5-6" },
-      { id: "w1d2e4", tier: "T3", name: "Сгибания ног лёжа", sets: "2×12", rpe: "5-6" },
+    { name: "Тяга + OHP", ex: [
+      { id: "w1d2e1", t: "T1", n: "Становая тяга", s: "3×8", r: "5-6" },
+      { id: "w1d2e2", t: "T2", n: "Армейский жим штангой (OHP)", s: "3×10", r: "5-6" },
+      { id: "w1d2e3", t: "T3", n: "Тяга верхнего блока", s: "2×12", r: "5-6" },
+      { id: "w1d2e4", t: "T3", n: "Сгибания ног лёжа", s: "2×12", r: "5-6" },
     ]},
-    { dayName: "Пятница", title: "Full Body + Zercher", exercises: [
-      { id: "w1d3e1", tier: "T1", name: "Жим ногами", sets: "3×10", rpe: "5-6" },
-      { id: "w1d3e2", tier: "T2", name: "Zercher-приседания", sets: "2×8", rpe: "4-5", note: "Пустой гриф!" },
-      { id: "w1d3e3", tier: "T2", name: "Жим гантелей на наклонной", sets: "3×10", rpe: "5-6" },
-      { id: "w1d3e4", tier: "T3", name: "Тяга гантели в наклоне", sets: "2×12", rpe: "5-6" },
-      { id: "w1d3e5", tier: "T3", name: "Махи гантелями в стороны", sets: "2×15", rpe: "5" },
+    { name: "Full Body", ex: [
+      { id: "w1d3e1", t: "T1", n: "Жим ногами", s: "3×10", r: "5-6" },
+      { id: "w1d3e2", t: "T2", n: "Фронтальные приседания (лёгкие)", s: "3×8", r: "5-6" },
+      { id: "w1d3e3", t: "T2", n: "Жим гантелей на наклонной", s: "3×10", r: "5-6" },
+      { id: "w1d3e4", t: "T3", n: "Тяга гантели в наклоне", s: "2×12", r: "5-6" },
+      { id: "w1d3e5", t: "T3", n: "Махи гантелями в стороны", s: "2×15", r: "5" },
     ]},
   ]};
 
-  weeks[2] = { days: [
-    { dayName: "Понедельник", title: "Присед + Жим", exercises: [
-      { id: "w2d1e1", tier: "T1", name: "Приседания со штангой", sets: "3×10", rpe: "6" },
-      { id: "w2d1e2", tier: "T2", name: "Жим штанги лёжа", sets: "3×10", rpe: "6" },
-      { id: "w2d1e3", tier: "T3", name: "Тяга в блоке к поясу", sets: "2×12", rpe: "6" },
-      { id: "w2d1e4", tier: "T3", name: "Face Pull", sets: "2×15", rpe: "5-6" },
+  W[2] = { days: [
+    { name: "Присед + Жим", ex: [
+      { id: "w2d1e1", t: "T1", n: "Приседания со штангой", s: "3×10", r: "6" },
+      { id: "w2d1e2", t: "T2", n: "Жим штанги лёжа", s: "3×10", r: "6" },
+      { id: "w2d1e3", t: "T3", n: "Тяга в блоке к поясу", s: "2×12", r: "6" },
+      { id: "w2d1e4", t: "T3", n: "Face Pull", s: "2×15", r: "5-6" },
     ]},
-    { dayName: "Среда", title: "Тяга + OHP", exercises: [
-      { id: "w2d2e1", tier: "T1", name: "Становая тяга", sets: "3×8", rpe: "6" },
-      { id: "w2d2e2", tier: "T2", name: "OHP", sets: "3×10", rpe: "6" },
-      { id: "w2d2e3", tier: "T3", name: "Тяга верхнего блока", sets: "2×12", rpe: "6" },
-      { id: "w2d2e4", tier: "T3", name: "Сгибания ног лёжа", sets: "2×12", rpe: "6" },
+    { name: "Тяга + OHP", ex: [
+      { id: "w2d2e1", t: "T1", n: "Становая тяга", s: "3×8", r: "6" },
+      { id: "w2d2e2", t: "T2", n: "OHP", s: "3×10", r: "6" },
+      { id: "w2d2e3", t: "T3", n: "Тяга верхнего блока", s: "2×12", r: "6" },
+      { id: "w2d2e4", t: "T3", n: "Сгибания ног лёжа", s: "2×12", r: "6" },
     ]},
-    { dayName: "Пятница", title: "Full Body + Zercher", exercises: [
-      { id: "w2d3e1", tier: "T1", name: "Фронтальные приседания", sets: "3×8", rpe: "6" },
-      { id: "w2d3e2", tier: "T2", name: "Zercher-приседания", sets: "3×8", rpe: "5-6", note: "40-50 кг" },
-      { id: "w2d3e3", tier: "T2", name: "Жим гантелей на наклонной", sets: "3×10", rpe: "6" },
-      { id: "w2d3e4", tier: "T3", name: "Тяга гантели в наклоне", sets: "2×12", rpe: "6" },
-      { id: "w2d3e5", tier: "T3", name: "Махи в стороны", sets: "2×15", rpe: "5-6" },
-    ]},
-  ]};
-
-  weeks[3] = { days: [
-    { dayName: "Понедельник", title: "Присед + Жим", exercises: [
-      { id: "w3d1e1", tier: "T1", name: "Приседания со штангой", sets: "3×8", rpe: "7" },
-      { id: "w3d1e2", tier: "T2", name: "Жим штанги лёжа", sets: "3×8", rpe: "7" },
-      { id: "w3d1e3", tier: "T3", name: "Тяга в блоке к поясу", sets: "3×12", rpe: "6-7" },
-      { id: "w3d1e4", tier: "T3", name: "Face Pull", sets: "2×15", rpe: "6" },
-      { id: "w3d1e5", tier: "T3", name: "Подъём на бицепс (EZ)", sets: "2×12", rpe: "6" },
-    ]},
-    { dayName: "Среда", title: "Тяга + OHP", exercises: [
-      { id: "w3d2e1", tier: "T1", name: "Становая тяга", sets: "3×6", rpe: "7" },
-      { id: "w3d2e2", tier: "T2", name: "OHP", sets: "3×8", rpe: "7" },
-      { id: "w3d2e3", tier: "T3", name: "Подтягивания / Тяга верхнего блока", sets: "2×8-10", rpe: "7" },
-      { id: "w3d2e4", tier: "T3", name: "Сгибания ног лёжа", sets: "3×12", rpe: "6-7" },
-      { id: "w3d2e5", tier: "T3", name: "Разгибания на трицепс", sets: "2×12", rpe: "6" },
-    ]},
-    { dayName: "Пятница", title: "Full Body + Zercher", exercises: [
-      { id: "w3d3e1", tier: "T1", name: "Фронтальные приседания", sets: "3×6", rpe: "7" },
-      { id: "w3d3e2", tier: "T2", name: "Zercher-приседания", sets: "3×6", rpe: "6-7", note: "50-60+ кг" },
-      { id: "w3d3e3", tier: "T2", name: "Жим на наклонной (штанга)", sets: "3×8", rpe: "7" },
-      { id: "w3d3e4", tier: "T3", name: "Тяга штанги в наклоне", sets: "3×10", rpe: "7" },
-      { id: "w3d3e5", tier: "T3", name: "Махи в стороны", sets: "2×15", rpe: "6" },
+    { name: "Full Body", ex: [
+      { id: "w2d3e1", t: "T1", n: "Фронтальные приседания", s: "3×8", r: "6" },
+      { id: "w2d3e2", t: "T2", n: "Болгарские сплит-приседания", s: "3×10/ногу", r: "6" },
+      { id: "w2d3e3", t: "T2", n: "Жим гантелей на наклонной", s: "3×10", r: "6" },
+      { id: "w2d3e4", t: "T3", n: "Тяга гантели в наклоне", s: "2×12", r: "6" },
+      { id: "w2d3e5", t: "T3", n: "Махи в стороны", s: "2×15", r: "5-6" },
     ]},
   ]};
 
-  weeks[4] = { days: [
-    { dayName: "Понедельник", title: "ТЯЖЁЛЫЙ / Сила", exercises: [
-      { id: "w4d1e1", tier: "T1", name: "Zercher-приседания", sets: "4×5", rpe: "7-8" },
-      { id: "w4d1e2", tier: "T2", name: "Жим лёжа узким хватом", sets: "3×8", rpe: "7" },
-      { id: "w4d1e3", tier: "T2", name: "Тяга штанги в наклоне", sets: "3×8", rpe: "7" },
-      { id: "w4d1e4", tier: "T3", name: "Сгибания ног лёжа", sets: "3×12", rpe: "7" },
-      { id: "w4d1e5", tier: "T3", name: "Face Pull", sets: "3×15", rpe: "7" },
-      { id: "w4d1e6", tier: "T3", name: "Подъём на бицепс EZ", sets: "2×12", rpe: "7" },
+  W[3] = { days: [
+    { name: "Присед + Жим", ex: [
+      { id: "w3d1e1", t: "T1", n: "Приседания со штангой", s: "3×8", r: "7" },
+      { id: "w3d1e2", t: "T2", n: "Жим штанги лёжа", s: "3×8", r: "7" },
+      { id: "w3d1e3", t: "T3", n: "Тяга в блоке к поясу", s: "3×12", r: "6-7" },
+      { id: "w3d1e4", t: "T3", n: "Face Pull", s: "2×15", r: "6" },
+      { id: "w3d1e5", t: "T3", n: "Подъём на бицепс (EZ)", s: "2×12", r: "6" },
     ]},
-    { dayName: "Среда", title: "СРЕДНИЙ / Гипертрофия", exercises: [
-      { id: "w4d2e1", tier: "T1", name: "Жим штанги лёжа", sets: "4×8", rpe: "7-8" },
-      { id: "w4d2e2", tier: "T2", name: "Румынская становая (RDL)", sets: "3×10", rpe: "7" },
-      { id: "w4d2e3", tier: "T2", name: "Подтягивания / Тяга блока", sets: "3×8-10", rpe: "7" },
-      { id: "w4d2e4", tier: "T3", name: "Жим ногами", sets: "3×12", rpe: "7-8" },
-      { id: "w4d2e5", tier: "T3", name: "Махи в стороны", sets: "3×15", rpe: "7" },
-      { id: "w4d2e6", tier: "T3", name: "Разгибания на трицепс", sets: "2×12", rpe: "7" },
+    { name: "Тяга + OHP", ex: [
+      { id: "w3d2e1", t: "T1", n: "Становая тяга", s: "3×6", r: "7" },
+      { id: "w3d2e2", t: "T2", n: "OHP", s: "3×8", r: "7" },
+      { id: "w3d2e3", t: "T3", n: "Подтягивания / Тяга блока", s: "2×8-10", r: "7" },
+      { id: "w3d2e4", t: "T3", n: "Сгибания ног лёжа", s: "3×12", r: "6-7" },
+      { id: "w3d2e5", t: "T3", n: "Разгибания на трицепс", s: "2×12", r: "6" },
     ]},
-    { dayName: "Пятница", title: "ЛЁГКИЙ / Объём", exercises: [
-      { id: "w4d3e1", tier: "T1", name: "Становая тяга", sets: "3×6", rpe: "7-8" },
-      { id: "w4d3e2", tier: "T2", name: "OHP", sets: "3×10", rpe: "7" },
-      { id: "w4d3e3", tier: "T2", name: "Тяга в блоке к поясу", sets: "3×10", rpe: "7" },
-      { id: "w4d3e4", tier: "T3", name: "Болгарские сплит-приседания", sets: "3×10/ногу", rpe: "7" },
-      { id: "w4d3e5", tier: "T3", name: "Разведение в кроссовере", sets: "3×12", rpe: "7" },
-      { id: "w4d3e6", tier: "T3", name: "Молотковые сгибания", sets: "2×12", rpe: "7" },
+    { name: "Full Body", ex: [
+      { id: "w3d3e1", t: "T1", n: "Фронтальные приседания", s: "3×6", r: "7" },
+      { id: "w3d3e2", t: "T2", n: "Румынская становая (RDL)", s: "3×8", r: "7" },
+      { id: "w3d3e3", t: "T2", n: "Жим на наклонной (штанга)", s: "3×8", r: "7" },
+      { id: "w3d3e4", t: "T3", n: "Тяга штанги в наклоне", s: "3×10", r: "7" },
+      { id: "w3d3e5", t: "T3", n: "Махи в стороны", s: "2×15", r: "6" },
     ]},
   ]};
 
-  weeks[5] = { days: [
-    { dayName: "Понедельник", title: "ТЯЖЁЛЫЙ", exercises: [
-      { id: "w5d1e1", tier: "T1", name: "Zercher-приседания", sets: "4×5", rpe: "8", note: "+5 кг" },
-      { id: "w5d1e2", tier: "T2", name: "Жим лёжа узким хватом", sets: "3×8", rpe: "7-8" },
-      { id: "w5d1e3", tier: "T2", name: "Тяга штанги в наклоне", sets: "3×8", rpe: "7-8" },
-      { id: "w5d1e4", tier: "T3", name: "Сгибания ног", sets: "3×12", rpe: "7-8" },
-      { id: "w5d1e5", tier: "T3", name: "Face Pull", sets: "3×15", rpe: "7" },
-      { id: "w5d1e6", tier: "T3", name: "Подъём на бицепс EZ", sets: "2×15", rpe: "7" },
-      { id: "w5d1e7", tier: "T3", name: "Ролик для пресса", sets: "2×10", rpe: "7" },
+  W[4] = { days: [
+    { name: "Присед + Жим", ex: [
+      { id: "w4d1e1", t: "T1", n: "Приседания со штангой", s: "4×6", r: "7-8" },
+      { id: "w4d1e2", t: "T2", n: "Жим лёжа узким хватом", s: "3×8", r: "7" },
+      { id: "w4d1e3", t: "T2", n: "Тяга штанги в наклоне", s: "3×8", r: "7" },
+      { id: "w4d1e4", t: "T3", n: "Сгибания ног лёжа", s: "3×12", r: "7" },
+      { id: "w4d1e5", t: "T3", n: "Face Pull", s: "3×15", r: "7" },
+      { id: "w4d1e6", t: "T3", n: "Подъём на бицепс EZ", s: "2×12", r: "7" },
     ]},
-    { dayName: "Среда", title: "СРЕДНИЙ", exercises: [
-      { id: "w5d2e1", tier: "T1", name: "Жим штанги лёжа", sets: "4×8", rpe: "8" },
-      { id: "w5d2e2", tier: "T2", name: "RDL", sets: "3×10", rpe: "7-8" },
-      { id: "w5d2e3", tier: "T2", name: "Подтягивания / Тяга блока", sets: "3×10", rpe: "7-8" },
-      { id: "w5d2e4", tier: "T3", name: "Жим ногами", sets: "3×15", rpe: "8" },
-      { id: "w5d2e5", tier: "T3", name: "Махи в стороны", sets: "3×15", rpe: "7" },
-      { id: "w5d2e6", tier: "T3", name: "Разгибания на трицепс", sets: "3×12", rpe: "7" },
+    { name: "Жим + Тяга", ex: [
+      { id: "w4d2e1", t: "T1", n: "Жим штанги лёжа", s: "4×8", r: "7-8" },
+      { id: "w4d2e2", t: "T2", n: "RDL", s: "3×10", r: "7" },
+      { id: "w4d2e3", t: "T2", n: "Подтягивания / Тяга блока", s: "3×8-10", r: "7" },
+      { id: "w4d2e4", t: "T3", n: "Жим ногами", s: "3×12", r: "7-8" },
+      { id: "w4d2e5", t: "T3", n: "Махи в стороны", s: "3×15", r: "7" },
+      { id: "w4d2e6", t: "T3", n: "Разгибания на трицепс", s: "2×12", r: "7" },
     ]},
-    { dayName: "Пятница", title: "ЛЁГКИЙ", exercises: [
-      { id: "w5d3e1", tier: "T1", name: "Становая тяга", sets: "3×6", rpe: "8" },
-      { id: "w5d3e2", tier: "T2", name: "OHP", sets: "3×10", rpe: "7-8" },
-      { id: "w5d3e3", tier: "T2", name: "Тяга в блоке к поясу", sets: "3×10", rpe: "7-8" },
-      { id: "w5d3e4", tier: "T3", name: "Болгарские сплит-приседания", sets: "3×10/ногу", rpe: "7-8" },
-      { id: "w5d3e5", tier: "T3", name: "Разведение в кроссовере", sets: "3×15", rpe: "7" },
-      { id: "w5d3e6", tier: "T3", name: "Молотковые сгибания", sets: "2×12", rpe: "7" },
-      { id: "w5d3e7", tier: "T3", name: "Подъёмы ног в висе", sets: "2×10", rpe: "7" },
+    { name: "Становая + OHP", ex: [
+      { id: "w4d3e1", t: "T1", n: "Становая тяга", s: "3×6", r: "7-8" },
+      { id: "w4d3e2", t: "T2", n: "OHP", s: "3×10", r: "7" },
+      { id: "w4d3e3", t: "T2", n: "Тяга в блоке к поясу", s: "3×10", r: "7" },
+      { id: "w4d3e4", t: "T3", n: "Болгарские сплит-приседания", s: "3×10/ногу", r: "7" },
+      { id: "w4d3e5", t: "T3", n: "Разведение в кроссовере", s: "3×12", r: "7" },
+      { id: "w4d3e6", t: "T3", n: "Молотковые сгибания", s: "2×12", r: "7" },
     ]},
   ]};
 
-  weeks[6] = { days: [
-    { dayName: "Понедельник", title: "ТЯЖЁЛЫЙ", exercises: [
-      { id: "w6d1e1", tier: "T1", name: "Zercher-приседания", sets: "5×4", rpe: "8-9" },
-      { id: "w6d1e2", tier: "T2", name: "Жим лёжа узким хватом", sets: "3×8", rpe: "8" },
-      { id: "w6d1e3", tier: "T2", name: "Тяга штанги в наклоне", sets: "4×8", rpe: "8" },
-      { id: "w6d1e4", tier: "T3", name: "Сгибания ног", sets: "3×12", rpe: "8" },
-      { id: "w6d1e5", tier: "T3", name: "Face Pull", sets: "3×15", rpe: "7" },
-      { id: "w6d1e6", tier: "T3", name: "Подъём на бицепс EZ", sets: "3×12", rpe: "7" },
-      { id: "w6d1e7", tier: "T3", name: "Ролик для пресса", sets: "3×10", rpe: "7" },
+  W[5] = { days: [
+    { name: "Тяжёлый / Сила", ex: [
+      { id: "w5d1e1", t: "T1", n: "Zercher-приседания", s: "4×5", r: "7-8", note: "Старт: 40-50 кг" },
+      { id: "w5d1e2", t: "T2", n: "Жим лёжа узким хватом", s: "3×8", r: "7-8" },
+      { id: "w5d1e3", t: "T2", n: "Тяга штанги в наклоне", s: "3×8", r: "7-8" },
+      { id: "w5d1e4", t: "T3", n: "Сгибания ног", s: "3×12", r: "7-8" },
+      { id: "w5d1e5", t: "T3", n: "Face Pull", s: "3×15", r: "7" },
+      { id: "w5d1e6", t: "T3", n: "Подъём на бицепс EZ", s: "2×15", r: "7" },
+      { id: "w5d1e7", t: "T3", n: "Ролик для пресса", s: "2×10", r: "7" },
     ]},
-    { dayName: "Среда", title: "СРЕДНИЙ", exercises: [
-      { id: "w6d2e1", tier: "T1", name: "Жим штанги лёжа", sets: "4×6", rpe: "8-9" },
-      { id: "w6d2e2", tier: "T2", name: "RDL", sets: "3×10", rpe: "8" },
-      { id: "w6d2e3", tier: "T2", name: "Подтягивания с весом", sets: "4×8", rpe: "8" },
-      { id: "w6d2e4", tier: "T3", name: "Zercher (лёгкие)", sets: "3×10", rpe: "7" },
-      { id: "w6d2e5", tier: "T3", name: "Махи в стороны", sets: "3×15", rpe: "7-8" },
-      { id: "w6d2e6", tier: "T3", name: "Разгибания на трицепс", sets: "3×12", rpe: "7" },
+    { name: "Средний / Гипертрофия", ex: [
+      { id: "w5d2e1", t: "T1", n: "Жим штанги лёжа", s: "4×8", r: "8" },
+      { id: "w5d2e2", t: "T2", n: "RDL", s: "3×10", r: "7-8" },
+      { id: "w5d2e3", t: "T2", n: "Подтягивания / Тяга блока", s: "3×10", r: "7-8" },
+      { id: "w5d2e4", t: "T3", n: "Жим ногами", s: "3×15", r: "8" },
+      { id: "w5d2e5", t: "T3", n: "Махи в стороны", s: "3×15", r: "7" },
+      { id: "w5d2e6", t: "T3", n: "Разгибания на трицепс", s: "3×12", r: "7" },
     ]},
-    { dayName: "Пятница", title: "ЛЁГКИЙ", exercises: [
-      { id: "w6d3e1", tier: "T1", name: "Становая тяга", sets: "4×5", rpe: "8" },
-      { id: "w6d3e2", tier: "T2", name: "OHP", sets: "3×8", rpe: "8" },
-      { id: "w6d3e3", tier: "T2", name: "Тяга в блоке к поясу", sets: "3×10", rpe: "8" },
-      { id: "w6d3e4", tier: "T3", name: "Болгарские сплит-приседания", sets: "3×10/ногу", rpe: "8" },
-      { id: "w6d3e5", tier: "T3", name: "Разведение на наклонной", sets: "3×12", rpe: "7" },
-      { id: "w6d3e6", tier: "T3", name: "Молотковые сгибания", sets: "3×12", rpe: "7" },
-      { id: "w6d3e7", tier: "T3", name: "Подъёмы ног в висе", sets: "3×12", rpe: "7" },
-    ]},
-  ]};
-
-  weeks[7] = { days: [
-    { dayName: "Понедельник", title: "ТЯЖЁЛЫЙ — ПИК", exercises: [
-      { id: "w7d1e1", tier: "T1", name: "Zercher-приседания", sets: "5×4", rpe: "8-9" },
-      { id: "w7d1e2", tier: "T2", name: "Жим лёжа", sets: "4×6", rpe: "8" },
-      { id: "w7d1e3", tier: "T2", name: "Тяга штанги в наклоне", sets: "4×8", rpe: "8" },
-      { id: "w7d1e4", tier: "T3", name: "Сгибания ног", sets: "3×15", rpe: "8" },
-      { id: "w7d1e5", tier: "T3", name: "Face Pull", sets: "3×20", rpe: "7" },
-      { id: "w7d1e6", tier: "T3", name: "Подъём на бицепс EZ", sets: "3×12", rpe: "8" },
-      { id: "w7d1e7", tier: "T3", name: "Ролик для пресса", sets: "3×12", rpe: "7" },
-    ]},
-    { dayName: "Среда", title: "СРЕДНИЙ — ПИК", exercises: [
-      { id: "w7d2e1", tier: "T1", name: "Жим штанги лёжа", sets: "5×5", rpe: "8-9" },
-      { id: "w7d2e2", tier: "T2", name: "RDL", sets: "4×8", rpe: "8" },
-      { id: "w7d2e3", tier: "T2", name: "Подтягивания с весом", sets: "4×6-8", rpe: "8" },
-      { id: "w7d2e4", tier: "T3", name: "Zercher (лёгкие)", sets: "3×10", rpe: "7" },
-      { id: "w7d2e5", tier: "T3", name: "Махи в стороны", sets: "4×15", rpe: "7-8" },
-      { id: "w7d2e6", tier: "T3", name: "Французский жим", sets: "3×12", rpe: "7" },
-    ]},
-    { dayName: "Пятница", title: "ЛЁГКИЙ — ПИК", exercises: [
-      { id: "w7d3e1", tier: "T1", name: "Становая тяга", sets: "4×5", rpe: "8-9" },
-      { id: "w7d3e2", tier: "T2", name: "OHP", sets: "4×6", rpe: "8" },
-      { id: "w7d3e3", tier: "T2", name: "Тяга в блоке к поясу", sets: "4×10", rpe: "8" },
-      { id: "w7d3e4", tier: "T3", name: "Болгарские сплит-приседания", sets: "3×12/ногу", rpe: "8" },
-      { id: "w7d3e5", tier: "T3", name: "Разведение в кроссовере", sets: "3×15", rpe: "7" },
-      { id: "w7d3e6", tier: "T3", name: "Молотковые сгибания", sets: "3×12", rpe: "7" },
-      { id: "w7d3e7", tier: "T3", name: "Подъёмы ног в висе", sets: "3×15", rpe: "7" },
+    { name: "Лёгкий / Объём", ex: [
+      { id: "w5d3e1", t: "T1", n: "Становая тяга", s: "3×6", r: "8" },
+      { id: "w5d3e2", t: "T2", n: "OHP", s: "3×10", r: "7-8" },
+      { id: "w5d3e3", t: "T2", n: "Тяга в блоке к поясу", s: "3×10", r: "7-8" },
+      { id: "w5d3e4", t: "T3", n: "Болгарские сплит-приседания", s: "3×10/ногу", r: "7-8" },
+      { id: "w5d3e5", t: "T3", n: "Разведение в кроссовере", s: "3×15", r: "7" },
+      { id: "w5d3e6", t: "T3", n: "Молотковые сгибания", s: "2×12", r: "7" },
+      { id: "w5d3e7", t: "T3", n: "Подъёмы ног в висе", s: "2×10", r: "7" },
     ]},
   ]};
 
-  weeks[8] = { days: [
-    { dayName: "Понедельник", title: "Разгрузка", exercises: [
-      { id: "w8d1e1", tier: "T1", name: "Zercher-приседания", sets: "3×5", rpe: "5-6" },
-      { id: "w8d1e2", tier: "T2", name: "Жим лёжа", sets: "3×5", rpe: "5-6" },
-      { id: "w8d1e3", tier: "T3", name: "Тяга в блоке", sets: "3×8", rpe: "5" },
-      { id: "w8d1e4", tier: "T3", name: "Face Pull", sets: "2×15", rpe: "5" },
+  W[6] = { days: [
+    { name: "Тяжёлый", ex: [
+      { id: "w6d1e1", t: "T1", n: "Zercher-приседания", s: "5×4", r: "8-9" },
+      { id: "w6d1e2", t: "T2", n: "Жим лёжа узким хватом", s: "3×8", r: "8" },
+      { id: "w6d1e3", t: "T2", n: "Тяга штанги в наклоне", s: "4×8", r: "8" },
+      { id: "w6d1e4", t: "T3", n: "Сгибания ног", s: "3×12", r: "8" },
+      { id: "w6d1e5", t: "T3", n: "Face Pull", s: "3×15", r: "7" },
+      { id: "w6d1e6", t: "T3", n: "Подъём на бицепс EZ", s: "3×12", r: "7" },
+      { id: "w6d1e7", t: "T3", n: "Ролик для пресса", s: "3×10", r: "7" },
     ]},
-    { dayName: "Среда", title: "Разгрузка", exercises: [
-      { id: "w8d2e1", tier: "T1", name: "Становая тяга", sets: "2×5", rpe: "5-6" },
-      { id: "w8d2e2", tier: "T2", name: "OHP", sets: "3×5", rpe: "5-6" },
-      { id: "w8d2e3", tier: "T3", name: "Тяга верхнего блока", sets: "3×8", rpe: "5" },
-      { id: "w8d2e4", tier: "T3", name: "Сгибания ног", sets: "2×12", rpe: "5" },
+    { name: "Средний", ex: [
+      { id: "w6d2e1", t: "T1", n: "Жим штанги лёжа", s: "4×6", r: "8-9" },
+      { id: "w6d2e2", t: "T2", n: "RDL", s: "3×10", r: "8" },
+      { id: "w6d2e3", t: "T2", n: "Подтягивания с весом", s: "4×8", r: "8" },
+      { id: "w6d2e4", t: "T3", n: "Zercher (лёгкие)", s: "3×10", r: "7" },
+      { id: "w6d2e5", t: "T3", n: "Махи в стороны", s: "3×15", r: "7-8" },
+      { id: "w6d2e6", t: "T3", n: "Разгибания на трицепс", s: "3×12", r: "7" },
     ]},
-    { dayName: "Пятница", title: "Разгрузка", exercises: [
-      { id: "w8d3e1", tier: "T1", name: "Zercher (лёгкие)", sets: "2×8", rpe: "5" },
-      { id: "w8d3e2", tier: "T2", name: "Жим на наклонной", sets: "3×8", rpe: "5-6" },
-      { id: "w8d3e3", tier: "T3", name: "Тяга штанги в наклоне", sets: "3×8", rpe: "5" },
-      { id: "w8d3e4", tier: "T3", name: "Ролик для пресса", sets: "2×10", rpe: "5" },
+    { name: "Лёгкий", ex: [
+      { id: "w6d3e1", t: "T1", n: "Становая тяга", s: "4×5", r: "8" },
+      { id: "w6d3e2", t: "T2", n: "OHP", s: "3×8", r: "8" },
+      { id: "w6d3e3", t: "T2", n: "Тяга в блоке к поясу", s: "3×10", r: "8" },
+      { id: "w6d3e4", t: "T3", n: "Болгарские сплит-приседания", s: "3×10/ногу", r: "8" },
+      { id: "w6d3e5", t: "T3", n: "Разведение на наклонной", s: "3×12", r: "7" },
+      { id: "w6d3e6", t: "T3", n: "Молотковые сгибания", s: "3×12", r: "7" },
+      { id: "w6d3e7", t: "T3", n: "Подъёмы ног в висе", s: "3×12", r: "7" },
     ]},
   ]};
 
-  // Weeks 9-11: 5/3/1
+  W[7] = { days: [
+    { name: "Пик объёма — Тяжёлый", ex: [
+      { id: "w7d1e1", t: "T1", n: "Zercher-приседания", s: "5×4", r: "8-9" },
+      { id: "w7d1e2", t: "T2", n: "Жим лёжа", s: "4×6", r: "8" },
+      { id: "w7d1e3", t: "T2", n: "Тяга штанги в наклоне", s: "4×8", r: "8" },
+      { id: "w7d1e4", t: "T3", n: "Сгибания ног", s: "3×15", r: "8" },
+      { id: "w7d1e5", t: "T3", n: "Face Pull", s: "3×20", r: "7" },
+      { id: "w7d1e6", t: "T3", n: "Подъём на бицепс EZ", s: "3×12", r: "8" },
+      { id: "w7d1e7", t: "T3", n: "Ролик для пресса", s: "3×12", r: "7" },
+    ]},
+    { name: "Пик объёма — Средний", ex: [
+      { id: "w7d2e1", t: "T1", n: "Жим штанги лёжа", s: "5×5", r: "8-9" },
+      { id: "w7d2e2", t: "T2", n: "RDL", s: "4×8", r: "8" },
+      { id: "w7d2e3", t: "T2", n: "Подтягивания с весом", s: "4×6-8", r: "8" },
+      { id: "w7d2e4", t: "T3", n: "Zercher (лёгкие)", s: "3×10", r: "7" },
+      { id: "w7d2e5", t: "T3", n: "Махи в стороны", s: "4×15", r: "7-8" },
+      { id: "w7d2e6", t: "T3", n: "Французский жим", s: "3×12", r: "7" },
+    ]},
+    { name: "Пик объёма — Лёгкий", ex: [
+      { id: "w7d3e1", t: "T1", n: "Становая тяга", s: "4×5", r: "8-9" },
+      { id: "w7d3e2", t: "T2", n: "OHP", s: "4×6", r: "8" },
+      { id: "w7d3e3", t: "T2", n: "Тяга в блоке к поясу", s: "4×10", r: "8" },
+      { id: "w7d3e4", t: "T3", n: "Болгарские сплит-приседания", s: "3×12/ногу", r: "8" },
+      { id: "w7d3e5", t: "T3", n: "Разведение в кроссовере", s: "3×15", r: "7" },
+      { id: "w7d3e6", t: "T3", n: "Молотковые сгибания", s: "3×12", r: "7" },
+      { id: "w7d3e7", t: "T3", n: "Подъёмы ног в висе", s: "3×15", r: "7" },
+    ]},
+  ]};
+
+  W[8] = { days: [
+    { name: "Разгрузка", ex: [
+      { id: "w8d1e1", t: "T1", n: "Zercher-приседания", s: "3×5", r: "5-6" },
+      { id: "w8d1e2", t: "T2", n: "Жим лёжа", s: "3×5", r: "5-6" },
+      { id: "w8d1e3", t: "T3", n: "Тяга в блоке", s: "3×8", r: "5" },
+      { id: "w8d1e4", t: "T3", n: "Face Pull", s: "2×15", r: "5" },
+    ]},
+    { name: "Разгрузка", ex: [
+      { id: "w8d2e1", t: "T1", n: "Становая тяга", s: "2×5", r: "5-6" },
+      { id: "w8d2e2", t: "T2", n: "OHP", s: "3×5", r: "5-6" },
+      { id: "w8d2e3", t: "T3", n: "Тяга верхнего блока", s: "3×8", r: "5" },
+      { id: "w8d2e4", t: "T3", n: "Сгибания ног", s: "2×12", r: "5" },
+    ]},
+    { name: "Разгрузка", ex: [
+      { id: "w8d3e1", t: "T1", n: "Zercher (лёгкие)", s: "2×8", r: "5" },
+      { id: "w8d3e2", t: "T2", n: "Жим на наклонной", s: "3×8", r: "5-6" },
+      { id: "w8d3e3", t: "T3", n: "Тяга штанги в наклоне", s: "3×8", r: "5" },
+      { id: "w8d3e4", t: "T3", n: "Ролик для пресса", s: "2×10", r: "5" },
+    ]},
+  ]};
+
   const s531 = {
-    9: { main: "5/5/5+", fsl: "5×5@65%", pct: "65/75/85% ТМ" },
-    10: { main: "3/3/3+", fsl: "5×5@70%", pct: "70/80/90% ТМ" },
-    11: { main: "5/3/1+", fsl: "5×5@75%", pct: "75/85/95% ТМ" },
+    9:  { m: "5/5/5+", f: "5×5@65%", p: "65/75/85%" },
+    10: { m: "3/3/3+", f: "5×5@70%", p: "70/80/90%" },
+    11: { m: "5/3/1+", f: "5×5@75%", p: "75/85/95%" },
   };
   for (let w = 9; w <= 11; w++) {
     const s = s531[w];
-    weeks[w] = { days: [
-      { dayName: "Понедельник", title: `Zercher 5/3/1`, exercises: [
-        { id: `w${w}d1e1`, tier: "T1", name: "Zercher-приседания", sets: s.main, rpe: "8-9", note: s.pct },
-        { id: `w${w}d1e2`, tier: "T1", name: "Zercher FSL", sets: s.fsl, rpe: "7" },
-        { id: `w${w}d1e3`, tier: "T2", name: "Жим на наклонной", sets: "3×8", rpe: "7-8" },
-        { id: `w${w}d1e4`, tier: "T3", name: "Сгибания ног", sets: "3×10", rpe: "7" },
-        { id: `w${w}d1e5`, tier: "T3", name: "Ролик для пресса", sets: "3×12", rpe: "7" },
-        { id: `w${w}d1e6`, tier: "T3", name: "Face Pull", sets: "3×15", rpe: "6" },
+    W[w] = { days: [
+      { name: `5/3/1: Zercher (${s.p})`, ex: [
+        { id: `w${w}d1e1`, t: "T1", n: "Zercher-приседания", s: s.m, r: "8-9", note: s.p + " ТМ" },
+        { id: `w${w}d1e2`, t: "T1", n: "Zercher FSL", s: s.f, r: "7" },
+        { id: `w${w}d1e3`, t: "T2", n: "Жим на наклонной", s: "3×8", r: "7-8" },
+        { id: `w${w}d1e4`, t: "T3", n: "Сгибания ног", s: "3×10", r: "7" },
+        { id: `w${w}d1e5`, t: "T3", n: "Ролик для пресса", s: "3×12", r: "7" },
+        { id: `w${w}d1e6`, t: "T3", n: "Face Pull", s: "3×15", r: "6" },
       ]},
-      { dayName: "Среда", title: `Жим 5/3/1`, exercises: [
-        { id: `w${w}d2e1`, tier: "T1", name: "Жим штанги лёжа", sets: s.main, rpe: "8-9", note: s.pct },
-        { id: `w${w}d2e2`, tier: "T1", name: "Жим лёжа FSL", sets: s.fsl, rpe: "7" },
-        { id: `w${w}d2e3`, tier: "T2", name: "Фронтальные приседания", sets: "3×6", rpe: "7-8" },
-        { id: `w${w}d2e4`, tier: "T3", name: "Тяга штанги в наклоне", sets: "3×8", rpe: "7-8" },
-        { id: `w${w}d2e5`, tier: "T3", name: "Махи в стороны", sets: "3×12", rpe: "7" },
-        { id: `w${w}d2e6`, tier: "T3", name: "Разгибания на трицепс", sets: "3×12", rpe: "7" },
+      { name: `5/3/1: Жим лёжа (${s.p})`, ex: [
+        { id: `w${w}d2e1`, t: "T1", n: "Жим штанги лёжа", s: s.m, r: "8-9", note: s.p + " ТМ" },
+        { id: `w${w}d2e2`, t: "T1", n: "Жим лёжа FSL", s: s.f, r: "7" },
+        { id: `w${w}d2e3`, t: "T2", n: "Фронтальные приседания", s: "3×6", r: "7-8" },
+        { id: `w${w}d2e4`, t: "T3", n: "Тяга штанги в наклоне", s: "3×8", r: "7-8" },
+        { id: `w${w}d2e5`, t: "T3", n: "Махи в стороны", s: "3×12", r: "7" },
+        { id: `w${w}d2e6`, t: "T3", n: "Разгибания на трицепс", s: "3×12", r: "7" },
       ]},
-      { dayName: "Пятница", title: `Тяга 5/3/1`, exercises: [
-        { id: `w${w}d3e1`, tier: "T1", name: "Становая тяга", sets: s.main, rpe: "8-9", note: s.pct },
-        { id: `w${w}d3e2`, tier: "T1", name: "Становая FSL", sets: "3×5", rpe: "7" },
-        { id: `w${w}d3e3`, tier: "T2", name: "OHP", sets: "3×6", rpe: "7-8" },
-        { id: `w${w}d3e4`, tier: "T3", name: "Подтягивания", sets: "3×8", rpe: "7-8" },
-        { id: `w${w}d3e5`, tier: "T3", name: "Подъём на бицепс", sets: "2×12", rpe: "7" },
-        { id: `w${w}d3e6`, tier: "T3", name: "Подъёмы ног в висе", sets: "3×12", rpe: "7" },
+      { name: `5/3/1: Становая (${s.p})`, ex: [
+        { id: `w${w}d3e1`, t: "T1", n: "Становая тяга", s: s.m, r: "8-9", note: s.p + " ТМ" },
+        { id: `w${w}d3e2`, t: "T1", n: "Становая FSL", s: "3×5", r: "7" },
+        { id: `w${w}d3e3`, t: "T2", n: "OHP", s: "3×6", r: "7-8" },
+        { id: `w${w}d3e4`, t: "T3", n: "Подтягивания", s: "3×8", r: "7-8" },
+        { id: `w${w}d3e5`, t: "T3", n: "Подъём на бицепс", s: "2×12", r: "7" },
+        { id: `w${w}d3e6`, t: "T3", n: "Подъёмы ног в висе", s: "3×12", r: "7" },
       ]},
     ]};
   }
 
-  weeks[12] = { days: [
-    { dayName: "Понедельник", title: "Мини-разгрузка", exercises: [
-      { id: "w12d1e1", tier: "T1", name: "Zercher-приседания", sets: "3×3", rpe: "6" },
-      { id: "w12d1e2", tier: "T2", name: "Жим лёжа", sets: "3×3", rpe: "6" },
-      { id: "w12d1e3", tier: "T3", name: "Тяга в блоке", sets: "3×8", rpe: "5" },
-      { id: "w12d1e4", tier: "T3", name: "Face Pull", sets: "2×15", rpe: "5" },
+  W[12] = { days: [
+    { name: "Переходная неделя", ex: [
+      { id: "w12d1e1", t: "T1", n: "Zercher-приседания", s: "3×3", r: "6" },
+      { id: "w12d1e2", t: "T2", n: "Жим лёжа", s: "3×3", r: "6" },
+      { id: "w12d1e3", t: "T3", n: "Тяга в блоке", s: "3×8", r: "5" },
+      { id: "w12d1e4", t: "T3", n: "Face Pull", s: "2×15", r: "5" },
     ]},
-    { dayName: "Среда", title: "Мини-разгрузка", exercises: [
-      { id: "w12d2e1", tier: "T1", name: "Становая тяга", sets: "2×3", rpe: "6" },
-      { id: "w12d2e2", tier: "T2", name: "OHP", sets: "3×3", rpe: "6" },
-      { id: "w12d2e3", tier: "T3", name: "Подтягивания", sets: "3×5", rpe: "5" },
+    { name: "Переходная неделя", ex: [
+      { id: "w12d2e1", t: "T1", n: "Становая тяга", s: "2×3", r: "6" },
+      { id: "w12d2e2", t: "T2", n: "OHP", s: "3×3", r: "6" },
+      { id: "w12d2e3", t: "T3", n: "Подтягивания", s: "3×5", r: "5" },
     ]},
-    { dayName: "Пятница", title: "Мини-разгрузка", exercises: [
-      { id: "w12d3e1", tier: "T1", name: "Zercher (лёгкие)", sets: "2×5", rpe: "5" },
-      { id: "w12d3e2", tier: "T2", name: "Жим на наклонной", sets: "3×5", rpe: "5" },
-      { id: "w12d3e3", tier: "T3", name: "Тяга штанги в наклоне", sets: "3×5", rpe: "5" },
-    ]},
-  ]};
-
-  weeks[13] = { days: [
-    { dayName: "Понедельник", title: "Перегрузка — Zercher", exercises: [
-      { id: "w13d1e1", tier: "T1", name: "Zercher-приседания", sets: "5×3", rpe: "8-9", note: "85-88% ТМ" },
-      { id: "w13d1e2", tier: "T2", name: "Жим лёжа", sets: "3×5", rpe: "7-8" },
-      { id: "w13d1e3", tier: "T3", name: "RDL", sets: "3×8", rpe: "7" },
-      { id: "w13d1e4", tier: "T3", name: "Face Pull", sets: "3×15", rpe: "6" },
-      { id: "w13d1e5", tier: "T3", name: "Ролик для пресса", sets: "3×10", rpe: "7" },
-    ]},
-    { dayName: "Среда", title: "Перегрузка — Жим", exercises: [
-      { id: "w13d2e1", tier: "T1", name: "Жим штанги лёжа", sets: "5×3", rpe: "8-9", note: "85-88% ТМ" },
-      { id: "w13d2e2", tier: "T2", name: "Zercher (лёгкие)", sets: "3×5", rpe: "7" },
-      { id: "w13d2e3", tier: "T3", name: "Подтягивания с весом", sets: "3×5", rpe: "7" },
-      { id: "w13d2e4", tier: "T3", name: "Махи в стороны", sets: "3×12", rpe: "7" },
-    ]},
-    { dayName: "Пятница", title: "Перегрузка — Тяга", exercises: [
-      { id: "w13d3e1", tier: "T1", name: "Становая тяга", sets: "5×3", rpe: "8-9", note: "85-88% ТМ" },
-      { id: "w13d3e2", tier: "T2", name: "OHP", sets: "3×5", rpe: "7-8" },
-      { id: "w13d3e3", tier: "T3", name: "Тяга штанги в наклоне", sets: "3×6", rpe: "7" },
+    { name: "Переходная неделя", ex: [
+      { id: "w12d3e1", t: "T1", n: "Zercher (лёгкие)", s: "2×5", r: "5" },
+      { id: "w12d3e2", t: "T2", n: "Жим на наклонной", s: "3×5", r: "5" },
+      { id: "w12d3e3", t: "T3", n: "Тяга штанги в наклоне", s: "3×5", r: "5" },
     ]},
   ]};
 
-  weeks[14] = { days: [
-    { dayName: "Понедельник", title: "Тейпер", exercises: [
-      { id: "w14d1e1", tier: "T1", name: "Zercher-приседания", sets: "3×2", rpe: "8", note: "90-93%" },
-      { id: "w14d1e2", tier: "T2", name: "Жим на наклонной", sets: "2×5", rpe: "7" },
-      { id: "w14d1e3", tier: "T3", name: "Face Pull", sets: "2×15", rpe: "6" },
+  W[13] = { days: [
+    { name: "Перегрузка — Zercher", ex: [
+      { id: "w13d1e1", t: "T1", n: "Zercher-приседания", s: "5×3", r: "8-9", note: "85-88% ТМ" },
+      { id: "w13d1e2", t: "T2", n: "Жим лёжа", s: "3×5", r: "7-8" },
+      { id: "w13d1e3", t: "T3", n: "RDL", s: "3×8", r: "7" },
+      { id: "w13d1e4", t: "T3", n: "Face Pull", s: "3×15", r: "6" },
+      { id: "w13d1e5", t: "T3", n: "Ролик для пресса", s: "3×10", r: "7" },
     ]},
-    { dayName: "Среда", title: "Тейпер", exercises: [
-      { id: "w14d2e1", tier: "T1", name: "Жим штанги лёжа", sets: "3×2", rpe: "8", note: "90-93%" },
-      { id: "w14d2e2", tier: "T2", name: "Фронтальные приседания", sets: "2×3", rpe: "7" },
-      { id: "w14d2e3", tier: "T3", name: "Тяга в блоке", sets: "2×8", rpe: "6" },
+    { name: "Перегрузка — Жим", ex: [
+      { id: "w13d2e1", t: "T1", n: "Жим штанги лёжа", s: "5×3", r: "8-9", note: "85-88% ТМ" },
+      { id: "w13d2e2", t: "T2", n: "Zercher (лёгкие)", s: "3×5", r: "7" },
+      { id: "w13d2e3", t: "T3", n: "Подтягивания с весом", s: "3×5", r: "7" },
+      { id: "w13d2e4", t: "T3", n: "Махи в стороны", s: "3×12", r: "7" },
     ]},
-    { dayName: "Пятница", title: "Тейпер", exercises: [
-      { id: "w14d3e1", tier: "T1", name: "Становая тяга", sets: "3×2", rpe: "8", note: "90-93%" },
-      { id: "w14d3e2", tier: "T2", name: "OHP", sets: "2×3", rpe: "7" },
-    ]},
-  ]};
-
-  weeks[15] = { days: [
-    { dayName: "Понедельник", title: "Глубокий тейпер", exercises: [
-      { id: "w15d1e1", tier: "T1", name: "Zercher-приседания", sets: "2×1", rpe: "8-9", note: "93-97%" },
-      { id: "w15d1e2", tier: "T2", name: "Жим лёжа", sets: "2×3", rpe: "6" },
-    ]},
-    { dayName: "Среда", title: "Глубокий тейпер", exercises: [
-      { id: "w15d2e1", tier: "T1", name: "Жим штанги лёжа", sets: "2×1", rpe: "8-9", note: "93-97%" },
-      { id: "w15d2e2", tier: "T2", name: "Zercher (лёгкие)", sets: "2×3", rpe: "5" },
-    ]},
-    { dayName: "Пятница", title: "Глубокий тейпер", exercises: [
-      { id: "w15d3e1", tier: "T1", name: "Становая тяга", sets: "2×1", rpe: "8-9", note: "93-97%" },
-      { id: "w15d3e2", tier: "T2", name: "OHP", sets: "2×3", rpe: "5" },
+    { name: "Перегрузка — Тяга", ex: [
+      { id: "w13d3e1", t: "T1", n: "Становая тяга", s: "5×3", r: "8-9", note: "85-88% ТМ" },
+      { id: "w13d3e2", t: "T2", n: "OHP", s: "3×5", r: "7-8" },
+      { id: "w13d3e3", t: "T3", n: "Тяга штанги в наклоне", s: "3×6", r: "7" },
     ]},
   ]};
 
-  weeks[16] = { days: [
-    { dayName: "Понедельник", title: "ТЕСТ — Zercher 1ПМ", exercises: [
-      { id: "w16d1e1", tier: "T1", name: "Разминка → 60% → 75% → 85%", sets: "по 1-5", rpe: "5-7" },
-      { id: "w16d1e2", tier: "T1", name: "Zercher 92% ×1", sets: "1×1", rpe: "8" },
-      { id: "w16d1e3", tier: "T1", name: "Zercher 97% ×1", sets: "1×1", rpe: "9" },
-      { id: "w16d1e4", tier: "T1", name: "ZERCHER 100-103% НОВЫЙ ПМ!", sets: "1×1", rpe: "MAX" },
+  W[14] = { days: [
+    { name: "Тейпер — Zercher", ex: [
+      { id: "w14d1e1", t: "T1", n: "Zercher-приседания", s: "3×2", r: "8", note: "90-93%" },
+      { id: "w14d1e2", t: "T2", n: "Жим на наклонной", s: "2×5", r: "7" },
+      { id: "w14d1e3", t: "T3", n: "Face Pull", s: "2×15", r: "6" },
     ]},
-    { dayName: "Среда", title: "ТЕСТ — Жим 1ПМ", exercises: [
-      { id: "w16d2e1", tier: "T1", name: "Разминка → 60% → 75% → 85%", sets: "по 1-5", rpe: "5-7" },
-      { id: "w16d2e2", tier: "T1", name: "Жим 92% ×1", sets: "1×1", rpe: "8" },
-      { id: "w16d2e3", tier: "T1", name: "Жим 97% ×1", sets: "1×1", rpe: "9" },
-      { id: "w16d2e4", tier: "T1", name: "ЖИМ 100-103% НОВЫЙ ПМ!", sets: "1×1", rpe: "MAX" },
+    { name: "Тейпер — Жим", ex: [
+      { id: "w14d2e1", t: "T1", n: "Жим штанги лёжа", s: "3×2", r: "8", note: "90-93%" },
+      { id: "w14d2e2", t: "T2", n: "Фронтальные приседания", s: "2×3", r: "7" },
+      { id: "w14d2e3", t: "T3", n: "Тяга в блоке", s: "2×8", r: "6" },
     ]},
-    { dayName: "Пятница", title: "ТЕСТ — Тяга 1ПМ", exercises: [
-      { id: "w16d3e1", tier: "T1", name: "Разминка → 60% → 75% → 85%", sets: "по 1-5", rpe: "5-7" },
-      { id: "w16d3e2", tier: "T1", name: "Тяга 92% ×1", sets: "1×1", rpe: "8" },
-      { id: "w16d3e3", tier: "T1", name: "Тяга 97% ×1", sets: "1×1", rpe: "9" },
-      { id: "w16d3e4", tier: "T1", name: "ТЯГА 100-103% НОВЫЙ ПМ!", sets: "1×1", rpe: "MAX" },
+    { name: "Тейпер — Тяга", ex: [
+      { id: "w14d3e1", t: "T1", n: "Становая тяга", s: "3×2", r: "8", note: "90-93%" },
+      { id: "w14d3e2", t: "T2", n: "OHP", s: "2×3", r: "7" },
     ]},
   ]};
 
-  return weeks;
+  W[15] = { days: [
+    { name: "Глубокий тейпер", ex: [
+      { id: "w15d1e1", t: "T1", n: "Zercher-приседания", s: "2×1", r: "8-9", note: "93-97%" },
+      { id: "w15d1e2", t: "T2", n: "Жим лёжа", s: "2×3", r: "6" },
+    ]},
+    { name: "Глубокий тейпер", ex: [
+      { id: "w15d2e1", t: "T1", n: "Жим штанги лёжа", s: "2×1", r: "8-9", note: "93-97%" },
+      { id: "w15d2e2", t: "T2", n: "Zercher (лёгкие)", s: "2×3", r: "5" },
+    ]},
+    { name: "Глубокий тейпер", ex: [
+      { id: "w15d3e1", t: "T1", n: "Становая тяга", s: "2×1", r: "8-9", note: "93-97%" },
+      { id: "w15d3e2", t: "T2", n: "OHP", s: "2×3", r: "5" },
+    ]},
+  ]};
+
+  W[16] = { days: [
+    { name: "ТЕСТ — Zercher 1ПМ", ex: [
+      { id: "w16d1e1", t: "T1", n: "Разминка → 60% → 75% → 85%", s: "по 1-5", r: "5-7" },
+      { id: "w16d1e2", t: "T1", n: "Zercher 92% ×1", s: "1×1", r: "8" },
+      { id: "w16d1e3", t: "T1", n: "Zercher 97% ×1", s: "1×1", r: "9" },
+      { id: "w16d1e4", t: "T1", n: "ZERCHER 100-103% — НОВЫЙ ПМ", s: "1×1", r: "MAX" },
+    ]},
+    { name: "ТЕСТ — Жим 1ПМ", ex: [
+      { id: "w16d2e1", t: "T1", n: "Разминка → 60% → 75% → 85%", s: "по 1-5", r: "5-7" },
+      { id: "w16d2e2", t: "T1", n: "Жим 92% ×1", s: "1×1", r: "8" },
+      { id: "w16d2e3", t: "T1", n: "Жим 97% ×1", s: "1×1", r: "9" },
+      { id: "w16d2e4", t: "T1", n: "ЖИМ 100-103% — НОВЫЙ ПМ", s: "1×1", r: "MAX" },
+    ]},
+    { name: "ТЕСТ — Становая 1ПМ", ex: [
+      { id: "w16d3e1", t: "T1", n: "Разминка → 60% → 75% → 85%", s: "по 1-5", r: "5-7" },
+      { id: "w16d3e2", t: "T1", n: "Тяга 92% ×1", s: "1×1", r: "8" },
+      { id: "w16d3e3", t: "T1", n: "Тяга 97% ×1", s: "1×1", r: "9" },
+      { id: "w16d3e4", t: "T1", n: "ТЯГА 100-103% — НОВЫЙ ПМ", s: "1×1", r: "MAX" },
+    ]},
+  ]};
+
+  return W;
 }
 
-const PROGRAM = generateProgram();
+const PROG = buildProgram();
+const TIER_BG = { T1: "#1A1A1A", T2: "#6A6A66", T3: "#B8B8B4" };
 
-// ─── APP COMPONENT ──────────────────────────────────────────────────────────
+function CircleProgress({ pct, size, stroke, color, track }) {
+  const radius = (size - stroke) / 2;
+  const circ = 2 * Math.PI * radius;
+  const offset = circ - (pct / 100) * circ;
+  return (
+    <svg width={size} height={size} style={{transform:"rotate(-90deg)"}}>
+      <circle cx={size/2} cy={size/2} r={radius} fill="none" stroke={track || "#E8E8E4"} strokeWidth={stroke}/>
+      <circle cx={size/2} cy={size/2} r={radius} fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round"
+        strokeDasharray={circ} strokeDashoffset={offset} style={{transition:"stroke-dashoffset .5s"}}/>
+    </svg>
+  );
+}
+
 function App() {
-  const [state, setState] = useState(() => storage.get("iron") || { startDate: null, completed: {}, weights: {}, restDays: {} });
-  const [view, setView] = useState("calendar");
-  const [selWeek, setSelWeek] = useState(null);
-  const [selDay, setSelDay] = useState(null);
+  const [state, setState] = useState(() => storage.get("ironv2") || { startDate: null, completed: {}, weights: {}, rest: {} });
+  const [view, setView] = useState("home");
+  const [selW, setSelW] = useState(null);
+  const [selD, setSelD] = useState(null);
 
-  const save = (s) => { setState(s); storage.set("iron", s); };
+  const save = (s) => { setState(s); storage.set("ironv2", s); };
   const toggle = (id) => save({...state, completed: {...state.completed, [id]: !state.completed[id]}});
-  const toggleRest = (dk, id) => { const d = state.restDays[dk]||{}; save({...state, restDays: {...state.restDays, [dk]: {...d, [id]: !d[id]}}}); };
-  const setWeight = (id, w) => save({...state, weights: {...state.weights, [id]: w}});
+  const toggleRest = (k, id) => { const d = state.rest[k] || {}; save({...state, rest: {...state.rest, [k]: {...d, [id]: !d[id]}}}); };
+  const setW = (id, v) => save({...state, weights: {...state.weights, [id]: v}});
 
   if (!state.startDate) {
-    return (<div style={S.start}>
-      <h1 style={S.logo}>IRON<span style={{color:"#FF6B35"}}>PROTOCOL</span></h1>
-      <p style={{color:"#666",fontSize:13,margin:"4px 0 24px"}}>16 недель силы и гипертрофии</p>
-      <div style={S.startBox}>
-        <div style={{color:"#aaa",fontSize:13,marginBottom:8}}>Дата старта:</div>
-        <input type="date" id="startDate" defaultValue={new Date().toISOString().split("T")[0]} style={S.dateInput}/>
-        <button onClick={()=>save({...state, startDate: document.getElementById("startDate").value})} style={S.startBtn}>ПОЕХАЛИ</button>
-      </div>
-      <div style={{color:"#444",fontSize:11,marginTop:20,textAlign:"center",lineHeight:2}}>
-        <div>Zercher + OHP + 5/3/1</div>
-        <div>3 дня в зале + домашняя работа</div>
-        <div>Прогресс сохраняется на устройстве</div>
-      </div>
-    </div>);
+    return <Start onStart={(d) => save({...state, startDate: d})} />;
   }
 
   const now = new Date();
   const start = new Date(state.startDate);
   const daysSince = Math.floor((now - start) / 86400000);
   const curWeek = Math.min(16, Math.max(1, Math.floor(daysSince/7)+1));
-  const total = Object.values(PROGRAM).flatMap(w=>w.days.flatMap(d=>d.exercises)).length;
-  const done = Object.values(state.completed).filter(Boolean).length;
-  const pct = total > 0 ? (done/total*100) : 0;
+  const dayOfWeek = now.getDay();
 
-  // ── Day view ──
-  if (view === "day" && selWeek && selDay !== null) {
-    const wd = PROGRAM[selWeek].days[selDay];
-    const ph = getPhase(selWeek);
-    const allDone = wd.exercises.every(e => state.completed[e.id]);
-    return (<div style={S.wrap}>
-      <div style={S.topBar}>
-        <button onClick={()=>{setView("calendar");setSelDay(null)}} style={S.back}>← Назад</button>
-        <span style={{...S.badge, background: ph.color}}>{ph.name}</span>
-      </div>
-      <div style={S.dayHead}>
-        <div style={{fontSize:11,color:"#666",letterSpacing:1}}>НЕДЕЛЯ {selWeek}</div>
-        <h2 style={{margin:"2px 0",fontSize:19,color:"#fff"}}>{wd.dayName}</h2>
-        <div style={{fontSize:13,color:"#FF6B35",fontWeight:600}}>{wd.title}</div>
-        {allDone && <div style={S.doneBadge}>✓ ВЫПОЛНЕНО</div>}
-      </div>
-      <div style={{padding:"6px 12px"}}>
-        {wd.exercises.map(ex => {
-          const d = state.completed[ex.id];
-          return (<div key={ex.id} style={{...S.card, opacity:d?0.55:1, borderLeftColor: TIER_COLORS[ex.tier]}}>
-            <div style={{display:"flex",gap:10,alignItems:"flex-start"}}>
-              <button onClick={()=>toggle(ex.id)} style={{...S.chk, background:d?TIER_COLORS[ex.tier]:"transparent", borderColor:TIER_COLORS[ex.tier]}}>{d?"✓":""}</button>
-              <div style={{flex:1}}>
-                <div style={{fontSize:13,fontWeight:600,color:"#e0e0e0"}}>{ex.name}</div>
-                <div style={{display:"flex",gap:8,marginTop:3,flexWrap:"wrap"}}>
-                  <span style={{fontSize:10,fontWeight:800,color:TIER_COLORS[ex.tier]}}>{ex.tier}</span>
-                  <span style={{fontSize:12,color:"#aaa",fontWeight:600}}>{ex.sets}</span>
-                  <span style={{fontSize:11,color:"#777"}}>RPE {ex.rpe}</span>
-                </div>
-                {ex.note && <div style={{fontSize:11,color:"#FF9800",marginTop:2,fontStyle:"italic"}}>{ex.note}</div>}
-              </div>
-            </div>
-            <div style={{display:"flex",alignItems:"center",gap:8,marginTop:6,paddingTop:5,borderTop:"1px solid #1e1e1e"}}>
-              <span style={{fontSize:11,color:"#555"}}>Вес:</span>
-              <input type="number" inputMode="decimal" value={state.weights[ex.id]||""} onChange={e=>setWeight(ex.id,e.target.value)} placeholder="—" style={S.wInput}/>
-              <span style={{fontSize:11,color:"#555"}}>кг</span>
-            </div>
-          </div>);
-        })}
-      </div>
-    </div>);
-  }
+  const trainingDayMap = { 1: 0, 3: 1, 5: 2 };
+  const isTrainingToday = dayOfWeek in trainingDayMap;
+  const todayDayIdx = trainingDayMap[dayOfWeek];
 
-  // ── Rest day view ──
-  if (view === "restday") {
-    const rk = `rest-w${selWeek}-d${selDay}`;
-    const rd = state.restDays[rk]||{};
-    const rNames = ["Вторник","Четверг","Суббота","Воскресенье"];
-    return (<div style={S.wrap}>
-      <div style={S.topBar}>
-        <button onClick={()=>{setView("calendar");setSelDay(null)}} style={S.back}>← Назад</button>
-        <span style={{...S.badge,background:"#333"}}>ДЕНЬ ОТДЫХА</span>
-      </div>
-      <div style={S.dayHead}>
-        <div style={{fontSize:11,color:"#666",letterSpacing:1}}>НЕДЕЛЯ {selWeek}</div>
-        <h2 style={{margin:"2px 0",fontSize:19,color:"#fff"}}>{rNames[selDay]||"Отдых"}</h2>
-        <div style={{fontSize:13,color:"#4CAF50",fontWeight:600}}>Домашняя работа (15-20 мин)</div>
-      </div>
-      <div style={{padding:"6px 12px"}}>
-        {REST_DAY_EXERCISES.map(ex => {
-          const d = rd[ex.id];
-          return (<div key={ex.id} style={{...S.card, opacity:d?0.55:1, borderLeftColor:"#4CAF50"}}>
-            <div style={{display:"flex",gap:10,alignItems:"center"}}>
-              <button onClick={()=>toggleRest(rk,ex.id)} style={{...S.chk, background:d?"#4CAF50":"transparent", borderColor:"#4CAF50"}}>{d?"✓":""}</button>
-              <div>
-                <div style={{fontSize:13,fontWeight:600}}>{ex.name}</div>
-                <div style={{fontSize:12,color:"#aaa",marginTop:2}}>{ex.sets}</div>
-              </div>
-            </div>
-          </div>);
-        })}
-      </div>
-    </div>);
-  }
+  const allEx = Object.values(PROG).flatMap(w => w.days.flatMap(d => d.ex));
+  const totalDone = Object.values(state.completed).filter(Boolean).length;
+  const totalPct = allEx.length > 0 ? (totalDone / allEx.length * 100) : 0;
 
-  // ── Calendar ──
-  return (<div style={S.wrap}>
-    <div style={{padding:"16px 16px 10px",borderBottom:"1px solid #1a1a1a"}}>
-      <h1 style={{fontSize:21,fontWeight:900,letterSpacing:2,margin:0,color:"#fff"}}>IRON<span style={{color:"#FF6B35"}}>PROTOCOL</span></h1>
-      <div style={{display:"flex",gap:16,marginTop:10}}>
-        <div style={S.statBox}><div style={S.statN}>{curWeek}</div><div style={S.statL}>неделя</div></div>
-        <div style={S.statBox}><div style={S.statN}>{done}</div><div style={S.statL}>сделано</div></div>
-        <div style={S.statBox}><div style={S.statN}>{Math.round(pct)}%</div><div style={S.statL}>прогресс</div></div>
-      </div>
-      <div style={{height:4,background:"#222",borderRadius:2,marginTop:10,overflow:"hidden"}}>
-        <div style={{height:"100%",width:pct+"%",background:"#FF6B35",borderRadius:2,transition:"width .4s"}}/>
-      </div>
-    </div>
+  // Day view
+  if (view === "day" && selW !== null && selD !== null) {
+    const wd = PROG[selW].days[selD];
+    const ph = getPhase(selW);
+    const allDone = wd.ex.every(e => state.completed[e.id]);
+    const doneCount = wd.ex.filter(e => state.completed[e.id]).length;
+    const dayPct = wd.ex.length > 0 ? (doneCount / wd.ex.length * 100) : 0;
 
-    <div style={{padding:"6px 10px"}}>
-      {Array.from({length:16},(_,i)=>i+1).map(wn => {
-        const ph = getPhase(wn);
-        const wd = PROGRAM[wn];
-        const isCur = wn === curWeek;
-        const wEx = wd.days.flatMap(d=>d.exercises);
-        const wDone = wEx.filter(e=>state.completed[e.id]).length;
-        const wAll = wEx.length;
-        const showPH = PHASES.some(p=>p.weeks[0]===wn);
-        const curPH = PHASES.find(p=>p.weeks[0]===wn);
-
-        const weekDays = [
-          {l:"Пн",type:"t",idx:0},{l:"Вт",type:"r",idx:0},
-          {l:"Ср",type:"t",idx:1},{l:"Чт",type:"r",idx:1},
-          {l:"Пт",type:"t",idx:2},{l:"Сб",type:"r",idx:2},
-          {l:"Вс",type:"r",idx:3},
-        ];
-
-        return (<div key={wn}>
-          {showPH && <div style={{padding:"8px 6px 2px",marginTop:6,borderLeft:`3px solid ${curPH.color}`,fontSize:11,fontWeight:700,letterSpacing:2,color:curPH.color}}>{curPH.name}</div>}
-          <div style={{border:`1px solid ${isCur?"#FF6B35":"#222"}`,borderRadius:8,padding:"8px 8px 6px",marginTop:4,background:isCur?"#1a1510":"#111"}}>
-            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
-              <span style={{fontWeight:700,fontSize:13,color:ph.color}}>W{wn}</span>
-              <span style={{fontSize:11,color:"#555"}}>{wDone}/{wAll}</span>
-            </div>
-            <div style={{display:"flex",gap:3}}>
-              {weekDays.map((d,i) => {
-                if (d.type === "t") {
-                  const day = wd.days[d.idx];
-                  if (!day) return null;
-                  const dd = day.exercises.filter(e=>state.completed[e.id]).length;
-                  const dc = dd === day.exercises.length;
-                  return (<button key={i} onClick={()=>{setSelWeek(wn);setSelDay(d.idx);setView("day")}}
-                    style={{...S.dayCell, background:dc?ph.color+"33":"#1a1a1a", borderColor:dc?ph.color:"#333"}}>
-                    <div style={{fontSize:10,fontWeight:700,color:"#ddd"}}>{d.l}</div>
-                    <div style={{fontSize:10,color:ph.color,marginTop:1}}>{dd}/{day.exercises.length}</div>
-                  </button>);
-                } else {
-                  const rk=`rest-w${wn}-d${d.idx}`;
-                  const rd=state.restDays[rk]||{};
-                  const rdd=REST_DAY_EXERCISES.filter(e=>rd[e.id]).length;
-                  const rdc=rdd===REST_DAY_EXERCISES.length;
-                  return (<button key={i} onClick={()=>{setSelWeek(wn);setSelDay(d.idx);setView("restday")}}
-                    style={{...S.dayCell, background:rdc?"#1a2a20":"#0f0f0f", borderColor:rdc?"#4CAF50":"#222"}}>
-                    <div style={{fontSize:10,fontWeight:600,color:"#777"}}>{d.l}</div>
-                    <div style={{fontSize:10,color:rdd>0?"#4CAF50":"#333",marginTop:1}}>{rdd>0?`${rdd}/6`:"—"}</div>
-                  </button>);
-                }
-              })}
-            </div>
+    return (
+      <div style={S.screen}>
+        <div style={S.pageHeader}>
+          <button onClick={() => setView("home")} style={S.iconBtn}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+          </button>
+          <div style={{textAlign:"center", flex:1}}>
+            <div style={{fontSize:11, color:"#8A8A86", textTransform:"uppercase", letterSpacing:1.5, fontWeight:500}}>Неделя {selW}</div>
+            <div style={{fontSize:12, color:"#8A8A86", marginTop:2}}>{ph.name}</div>
           </div>
-        </div>);
-      })}
+          <div style={{width:36}}/>
+        </div>
+
+        <div style={{padding:"16px 20px 24px"}}>
+          <h1 style={S.h1}>{wd.name}</h1>
+          <div style={S.progressRow}>
+            <div style={S.progressBar}>
+              <div style={{...S.progressFill, width: dayPct+"%"}}/>
+            </div>
+            <div style={{fontSize:13, color:"#8A8A86", fontWeight:500, minWidth:45}}>{doneCount}/{wd.ex.length}</div>
+          </div>
+          {allDone && (
+            <div style={{...S.badge, background:"#4A9B5F", color:"#fff", marginTop:14}}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              Выполнено
+            </div>
+          )}
+        </div>
+
+        <div style={{padding:"0 16px 40px"}}>
+          {wd.ex.map(ex => {
+            const d = state.completed[ex.id];
+            return (
+              <div key={ex.id} style={{...S.exCard, opacity: d ? 0.5 : 1}}>
+                <button onClick={() => toggle(ex.id)} style={{...S.chk, background: d ? "#1A1A1A" : "#fff", borderColor: d ? "#1A1A1A" : "#E5E5E1"}}>
+                  {d && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
+                </button>
+                <div style={{flex:1, minWidth:0}}>
+                  <div style={{display:"flex", alignItems:"center", gap:8, marginBottom:4, flexWrap:"wrap"}}>
+                    <span style={{...S.tierBadge, background: TIER_BG[ex.t]}}>{ex.t}</span>
+                    <span style={{fontSize:12, color:"#8A8A86", fontWeight:500}}>{ex.s}</span>
+                    <span style={{fontSize:12, color:"#B8B8B4"}}>·</span>
+                    <span style={{fontSize:12, color:"#8A8A86"}}>RPE {ex.r}</span>
+                  </div>
+                  <div style={{fontSize:15, fontWeight:600, color:"#1A1A1A", lineHeight:1.3}}>{ex.n}</div>
+                  {ex.note && <div style={{fontSize:12, color:"#E67A35", marginTop:4, fontWeight:500}}>{ex.note}</div>}
+                  <div style={S.weightInputWrap}>
+                    <input type="number" inputMode="decimal" value={state.weights[ex.id] || ""}
+                      onChange={e => setW(ex.id, e.target.value)} placeholder="0" style={S.weightIn}/>
+                    <span style={{fontSize:12, color:"#8A8A86"}}>кг</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  // Rest day view
+  if (view === "rest" && selW !== null && selD !== null) {
+    const rk = `r-${selW}-${selD}`;
+    const rdata = state.rest[rk] || {};
+    const rNames = ["Вторник", "Четверг", "Суббота", "Воскресенье"];
+    const doneCount = REST_EX.filter(e => rdata[e.id]).length;
+    const dayPct = (doneCount / REST_EX.length * 100);
+
+    return (
+      <div style={S.screen}>
+        <div style={S.pageHeader}>
+          <button onClick={() => setView("home")} style={S.iconBtn}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+          </button>
+          <div style={{textAlign:"center", flex:1}}>
+            <div style={{fontSize:11, color:"#8A8A86", textTransform:"uppercase", letterSpacing:1.5, fontWeight:500}}>Неделя {selW}</div>
+            <div style={{fontSize:12, color:"#8A8A86", marginTop:2}}>День отдыха</div>
+          </div>
+          <div style={{width:36}}/>
+        </div>
+
+        <div style={{padding:"16px 20px 24px"}}>
+          <h1 style={S.h1}>{rNames[selD]}</h1>
+          <div style={{fontSize:14, color:"#8A8A86", marginTop:4, marginBottom:14}}>Домашняя работа · 15–20 мин</div>
+          <div style={S.progressRow}>
+            <div style={S.progressBar}>
+              <div style={{...S.progressFill, width: dayPct+"%", background:"#4A9B5F"}}/>
+            </div>
+            <div style={{fontSize:13, color:"#8A8A86", fontWeight:500, minWidth:45}}>{doneCount}/{REST_EX.length}</div>
+          </div>
+        </div>
+
+        <div style={{padding:"0 16px 40px"}}>
+          {REST_EX.map(ex => {
+            const d = rdata[ex.id];
+            return (
+              <div key={ex.id} style={{...S.exCard, opacity: d ? 0.5 : 1}}>
+                <button onClick={() => toggleRest(rk, ex.id)} style={{...S.chk, background: d ? "#4A9B5F" : "#fff", borderColor: d ? "#4A9B5F" : "#E5E5E1"}}>
+                  {d && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
+                </button>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:15, fontWeight:600, color:"#1A1A1A", marginBottom:3}}>{ex.n}</div>
+                  <div style={{fontSize:13, color:"#8A8A86"}}>{ex.s}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  // Calendar view
+  if (view === "calendar") {
+    return (
+      <div style={S.screen}>
+        <div style={S.pageHeader}>
+          <button onClick={() => setView("home")} style={S.iconBtn}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+          </button>
+          <div style={{fontSize:15, fontWeight:600}}>Программа</div>
+          <div style={{width:36}}/>
+        </div>
+        <div style={{padding:"8px 16px 40px"}}>
+          {Array.from({length:16}, (_,i) => i+1).map(wn => {
+            const wd = PROG[wn];
+            const ph = getPhase(wn);
+            const isCur = wn === curWeek;
+            const wEx = wd.days.flatMap(d => d.ex);
+            const done = wEx.filter(e => state.completed[e.id]).length;
+            const total = wEx.length;
+            const wPct = total > 0 ? (done/total*100) : 0;
+            const showPH = PHASES.some(p => p.weeks[0] === wn);
+            const curPh = PHASES.find(p => p.weeks[0] === wn);
+
+            return (
+              <React.Fragment key={wn}>
+                {showPH && (
+                  <div style={S.phaseLabel}>
+                    <span style={{...S.phaseDot, background: curPh.dot}}/>
+                    {curPh.name}
+                  </div>
+                )}
+                <div style={{...S.weekCard, borderColor: isCur ? "#1A1A1A" : "#E5E5E1", borderWidth: isCur ? 2 : 1}}>
+                  <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12}}>
+                    <div>
+                      <div style={{fontSize:11, color:"#8A8A86", textTransform:"uppercase", letterSpacing:1, fontWeight:500}}>Неделя</div>
+                      <div style={{fontSize:22, fontWeight:700, marginTop:2}}>
+                        {wn}
+                        {isCur && <span style={{fontSize:11, color:"#E67A35", marginLeft:8, fontWeight:600, letterSpacing:1}}>СЕЙЧАС</span>}
+                      </div>
+                    </div>
+                    <div style={{position:"relative", width:44, height:44}}>
+                      <CircleProgress pct={wPct} size={44} stroke={3} color={done===total && total>0 ? "#4A9B5F" : "#1A1A1A"}/>
+                      <div style={{position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:600}}>{done}/{total}</div>
+                    </div>
+                  </div>
+                  <div style={S.daysGrid}>
+                    {[
+                      {l:"Пн", type:"t", i:0},
+                      {l:"Вт", type:"r", i:0},
+                      {l:"Ср", type:"t", i:1},
+                      {l:"Чт", type:"r", i:1},
+                      {l:"Пт", type:"t", i:2},
+                      {l:"Сб", type:"r", i:2},
+                      {l:"Вс", type:"r", i:3},
+                    ].map((d, i) => {
+                      if (d.type === "t") {
+                        const day = wd.days[d.i];
+                        if (!day) return <div key={i} style={S.dayPill}/>;
+                        const dd = day.ex.filter(e => state.completed[e.id]).length;
+                        const dc = dd === day.ex.length;
+                        return (
+                          <button key={i} onClick={() => {setSelW(wn); setSelD(d.i); setView("day");}}
+                            style={{...S.dayPill, background: dc ? "#1A1A1A" : "#FFFFFF", borderColor: dc ? "#1A1A1A" : "#E5E5E1", color: dc ? "#fff" : "#1A1A1A"}}>
+                            <div style={{fontSize:10, fontWeight:500, opacity:0.7}}>{d.l}</div>
+                            <div style={{fontSize:11, fontWeight:700, marginTop:2}}>{dd}/{day.ex.length}</div>
+                          </button>
+                        );
+                      } else {
+                        const rk = `r-${wn}-${d.i}`;
+                        const rd = state.rest[rk] || {};
+                        const rdd = REST_EX.filter(e => rd[e.id]).length;
+                        const rdc = rdd === REST_EX.length;
+                        return (
+                          <button key={i} onClick={() => {setSelW(wn); setSelD(d.i); setView("rest");}}
+                            style={{...S.dayPill, background: rdc ? "#4A9B5F" : "#EFEFED", borderColor: rdc ? "#4A9B5F" : "#E5E5E1", color: rdc ? "#fff" : "#8A8A86"}}>
+                            <div style={{fontSize:10, fontWeight:500, opacity:0.8}}>{d.l}</div>
+                            <div style={{fontSize:10, fontWeight:600, marginTop:2}}>{rdd > 0 ? `${rdd}/6` : "—"}</div>
+                          </button>
+                        );
+                      }
+                    })}
+                  </div>
+                </div>
+              </React.Fragment>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  // HOME
+  const phase = getPhase(curWeek);
+  const todayDay = isTrainingToday ? PROG[curWeek].days[todayDayIdx] : null;
+  const todayDone = todayDay ? todayDay.ex.filter(e => state.completed[e.id]).length : 0;
+  const todayTotal = todayDay ? todayDay.ex.length : 0;
+  const todayPct = todayTotal > 0 ? (todayDone/todayTotal*100) : 0;
+
+  const restDayMap = { 2: 0, 4: 1, 6: 2, 0: 3 };
+  const isRestToday = dayOfWeek in restDayMap;
+  const todayRestIdx = restDayMap[dayOfWeek];
+  const todayRestKey = isRestToday ? `r-${curWeek}-${todayRestIdx}` : null;
+  const todayRestData = todayRestKey ? (state.rest[todayRestKey] || {}) : {};
+  const todayRestDone = Object.values(todayRestData).filter(Boolean).length;
+
+  const weekEx = PROG[curWeek].days.flatMap(d => d.ex);
+  const weekDone = weekEx.filter(e => state.completed[e.id]).length;
+  const weekTotal = weekEx.length;
+
+  return (
+    <div style={S.screen}>
+      <div style={S.homeHeader}>
+        <div>
+          <h1 style={{fontSize:28, fontWeight:800, letterSpacing:-0.5, margin:0}}>Тренировки</h1>
+          <div style={{fontSize:13, color:"#8A8A86", marginTop:4, fontWeight:500}}>
+            <span style={{...S.phaseDot, background: phase.dot, display:"inline-block", marginRight:6, verticalAlign:"middle"}}/>
+            Неделя {curWeek} · {phase.name}
+          </div>
+        </div>
+        <button onClick={() => setView("calendar")} style={S.headBtn}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        </button>
+      </div>
+
+      <div style={{padding:"0 16px", display:"flex", gap:10, marginBottom:14}}>
+        <div style={{...S.statCard, flex:1}}>
+          <div style={{position:"relative", width:52, height:52}}>
+            <CircleProgress pct={totalPct} size={52} stroke={4} color="#1A1A1A"/>
+            <div style={{position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, fontWeight:700}}>{Math.round(totalPct)}</div>
+          </div>
+          <div style={{marginTop:10}}>
+            <div style={{fontSize:12, color:"#8A8A86", fontWeight:500}}>Прогресс</div>
+            <div style={{fontSize:17, fontWeight:700, marginTop:2}}>{totalDone} <span style={{fontSize:12, color:"#8A8A86", fontWeight:500}}>из {allEx.length}</span></div>
+          </div>
+        </div>
+        <div style={{...S.statCard, flex:1}}>
+          <div style={{fontSize:32, fontWeight:800, letterSpacing:-1}}>{curWeek}<span style={{fontSize:13, color:"#8A8A86", fontWeight:500, marginLeft:4}}>/ 16</span></div>
+          <div style={{marginTop:8}}>
+            <div style={{fontSize:12, color:"#8A8A86", fontWeight:500}}>Неделя</div>
+            <div style={{fontSize:13, fontWeight:600, marginTop:2, color: phase.dot}}>{phase.name}</div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{padding:"0 16px", marginBottom:14}}>
+        {isTrainingToday && todayDay ? (
+          <button onClick={() => {setSelW(curWeek); setSelD(todayDayIdx); setView("day");}} style={{...S.todayCard, textAlign:"left"}}>
+            <div style={{display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14}}>
+              <div>
+                <div style={{fontSize:11, color:"rgba(255,255,255,0.6)", textTransform:"uppercase", letterSpacing:1.5, fontWeight:600}}>Сегодня</div>
+                <div style={{fontSize:22, fontWeight:700, marginTop:4, color:"#fff"}}>{todayDay.name}</div>
+              </div>
+              <div style={{position:"relative", width:56, height:56}}>
+                <CircleProgress pct={todayPct} size={56} stroke={4} color="#fff" track="rgba(255,255,255,0.15)"/>
+                <div style={{position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, fontWeight:700, color:"#fff"}}>{todayDone}/{todayTotal}</div>
+              </div>
+            </div>
+            <div style={{fontSize:13, color:"rgba(255,255,255,0.8)", fontWeight:500}}>
+              {todayPct === 100 ? "Выполнено · Отличная работа" : todayPct > 0 ? "Продолжить тренировку" : "Начать тренировку →"}
+            </div>
+          </button>
+        ) : isRestToday ? (
+          <button onClick={() => {setSelW(curWeek); setSelD(todayRestIdx); setView("rest");}} style={{...S.todayCardLight, textAlign:"left"}}>
+            <div style={{display:"flex", alignItems:"center", justifyContent:"space-between"}}>
+              <div>
+                <div style={{fontSize:11, color:"#8A8A86", textTransform:"uppercase", letterSpacing:1.5, fontWeight:600}}>Сегодня</div>
+                <div style={{fontSize:22, fontWeight:700, marginTop:4, color:"#1A1A1A"}}>День отдыха</div>
+                <div style={{fontSize:13, color:"#8A8A86", marginTop:8, fontWeight:500}}>
+                  {todayRestDone > 0 ? `Домашняя работа: ${todayRestDone}/6` : "Домашняя работа · 15-20 мин"}
+                </div>
+              </div>
+              <div style={{width:48, height:48, borderRadius:24, background:"#E8E8E4", display:"flex", alignItems:"center", justifyContent:"center"}}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1A1A1A" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+              </div>
+            </div>
+          </button>
+        ) : null}
+      </div>
+
+      <div style={{padding:"0 16px", marginBottom:14}}>
+        <div style={{...S.card, padding:18}}>
+          <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14}}>
+            <div>
+              <div style={{fontSize:16, fontWeight:700}}>Эта неделя</div>
+              <div style={{fontSize:12, color:"#8A8A86", marginTop:2}}>{weekDone} из {weekTotal} упражнений</div>
+            </div>
+            <button onClick={() => setView("calendar")} style={{background:"transparent", color:"#8A8A86", fontSize:13, fontWeight:500, padding:0}}>
+              Все →
+            </button>
+          </div>
+          <div style={S.daysGrid}>
+            {[
+              {l:"Пн", type:"t", i:0},
+              {l:"Вт", type:"r", i:0},
+              {l:"Ср", type:"t", i:1},
+              {l:"Чт", type:"r", i:1},
+              {l:"Пт", type:"t", i:2},
+              {l:"Сб", type:"r", i:2},
+              {l:"Вс", type:"r", i:3},
+            ].map((d, i) => {
+              const isToday = (d.type === "t" && dayOfWeek === [1,3,5][d.i]) || (d.type === "r" && dayOfWeek === [2,4,6,0][d.i]);
+              if (d.type === "t") {
+                const day = PROG[curWeek].days[d.i];
+                if (!day) return <div key={i} style={S.dayPill}/>;
+                const dd = day.ex.filter(e => state.completed[e.id]).length;
+                const dc = dd === day.ex.length;
+                return (
+                  <button key={i} onClick={() => {setSelW(curWeek); setSelD(d.i); setView("day");}}
+                    style={{...S.dayPill,
+                      background: dc ? "#1A1A1A" : (isToday ? "#E8E8E4" : "#FFFFFF"),
+                      borderColor: dc ? "#1A1A1A" : (isToday ? "#1A1A1A" : "#E5E5E1"),
+                      color: dc ? "#fff" : "#1A1A1A"
+                    }}>
+                    <div style={{fontSize:10, fontWeight:500, opacity:0.7}}>{d.l}</div>
+                    <div style={{fontSize:11, fontWeight:700, marginTop:2}}>{dd}/{day.ex.length}</div>
+                  </button>
+                );
+              } else {
+                const rk = `r-${curWeek}-${d.i}`;
+                const rd = state.rest[rk] || {};
+                const rdd = REST_EX.filter(e => rd[e.id]).length;
+                const rdc = rdd === REST_EX.length;
+                return (
+                  <button key={i} onClick={() => {setSelW(curWeek); setSelD(d.i); setView("rest");}}
+                    style={{...S.dayPill,
+                      background: rdc ? "#4A9B5F" : (isToday ? "#EDF5EE" : "#EFEFED"),
+                      borderColor: rdc ? "#4A9B5F" : (isToday ? "#4A9B5F" : "#E5E5E1"),
+                      color: rdc ? "#fff" : "#8A8A86"
+                    }}>
+                    <div style={{fontSize:10, fontWeight:500, opacity:0.8}}>{d.l}</div>
+                    <div style={{fontSize:10, fontWeight:600, marginTop:2}}>{rdd > 0 ? `${rdd}/6` : "—"}</div>
+                  </button>
+                );
+              }
+            })}
+          </div>
+        </div>
+      </div>
+
+      <div style={{padding:"0 16px", marginBottom:24}}>
+        <div style={{...S.card, padding:18}}>
+          <div style={{display:"flex", alignItems:"center", gap:10, marginBottom:10}}>
+            <span style={{...S.phaseDot, background: phase.dot, width:10, height:10}}/>
+            <div style={{fontSize:11, color:"#8A8A86", textTransform:"uppercase", letterSpacing:1.5, fontWeight:600}}>Текущая фаза</div>
+          </div>
+          <div style={{fontSize:18, fontWeight:700, marginBottom:6}}>{phase.name}</div>
+          <div style={{fontSize:13, color:"#8A8A86", lineHeight:1.5}}>
+            {phase.name === "Реадаптация" && "Восстановление моторных паттернов, адаптация сухожилий. Zercher возвращается на 5-й неделе."}
+            {phase.name === "Гипертрофия" && "Максимальный набор мышечной массы. DUP-периодизация. Zercher как T1."}
+            {phase.name === "Разгрузка" && "Сброс накопленного утомления перед силовой фазой."}
+            {phase.name === "Сила 5/3/1" && "Конвертация мышечной массы в максимальную силу."}
+            {phase.name === "Переход" && "Мини-разгрузка перед пиком."}
+            {phase.name === "Пик" && "Тейпер, тест новых 1ПМ."}
+          </div>
+        </div>
+      </div>
+
+      <button onClick={() => {if(confirm("Сбросить весь прогресс?")) save({startDate:null, completed:{}, weights:{}, rest:{}})}} style={S.resetBtn}>
+        Сбросить прогресс
+      </button>
+      <div style={{height:40}}/>
     </div>
-    <button onClick={()=>{if(confirm("Сбросить весь прогресс?"))save({startDate:null,completed:{},weights:{},restDays:{}})}} style={{display:"block",margin:"16px auto",background:"none",border:"1px solid #333",color:"#555",padding:"8px 16px",borderRadius:6,fontSize:11,fontFamily:"inherit"}}>Сбросить прогресс</button>
-    <div style={{height:40}}/>
-  </div>);
+  );
 }
 
-// ─── Styles ─────────────────────────────────────────────────────────────────
+function Start({ onStart }) {
+  const today = new Date().toISOString().split("T")[0];
+  const [date, setDate] = useState(today);
+  return (
+    <div style={S.startScreen}>
+      <div style={{textAlign:"center", marginBottom:40}}>
+        <div style={{width:64, height:64, margin:"0 auto 20px", borderRadius:18, background:"#1A1A1A", display:"flex", alignItems:"center", justifyContent:"center"}}>
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6.5 6.5h11v11h-11z"/><path d="M6.5 6.5L3 3m14.5 3.5L21 3m-14.5 14.5L3 21m14.5-3.5L21 21"/></svg>
+        </div>
+        <h1 style={{fontSize:30, fontWeight:800, letterSpacing:-0.5, margin:0}}>IRON</h1>
+        <p style={{fontSize:14, color:"#8A8A86", marginTop:6, fontWeight:500}}>16 недель · сила + гипертрофия</p>
+      </div>
+      <div style={{...S.card, padding:20, width:"100%", maxWidth:320}}>
+        <div style={{fontSize:13, color:"#8A8A86", fontWeight:500, marginBottom:10}}>Дата старта</div>
+        <input type="date" value={date} onChange={e => setDate(e.target.value)}
+          style={{width:"100%", background:"#EFEFED", border:"1px solid #E5E5E1", color:"#1A1A1A",
+            padding:"12px 14px", borderRadius:10, fontSize:15, textAlign:"center",
+            marginBottom:14, boxSizing:"border-box", fontWeight:500}}/>
+        <button onClick={() => onStart(date)} style={{width:"100%", background:"#1A1A1A", color:"#fff",
+          padding:"14px", borderRadius:10, fontSize:15, fontWeight:700, letterSpacing:0.3}}>
+          Начать →
+        </button>
+      </div>
+      <div style={{marginTop:32, textAlign:"center", fontSize:12, color:"#B8B8B4", lineHeight:1.8}}>
+        <div>3 тренировки в неделю</div>
+        <div>Прогресс сохраняется на устройстве</div>
+      </div>
+    </div>
+  );
+}
+
 const S = {
-  wrap: {maxWidth:480,margin:"0 auto",background:"#0a0a0a",minHeight:"100vh",color:"#e0e0e0",fontFamily:"-apple-system,'SF Mono',Menlo,monospace"},
-  start: {display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:"100vh",background:"#0a0a0a",color:"#e0e0e0",fontFamily:"monospace",padding:24},
-  logo: {fontSize:26,fontWeight:900,letterSpacing:3,color:"#fff",margin:0},
-  startBox: {display:"flex",flexDirection:"column",alignItems:"center",padding:20,border:"1px solid #333",borderRadius:12,background:"#111",width:"100%",maxWidth:280},
-  dateInput: {background:"#1a1a1a",border:"1px solid #444",color:"#fff",padding:"10px 14px",borderRadius:6,fontSize:14,fontFamily:"inherit",width:"100%",textAlign:"center",marginBottom:10},
-  startBtn: {background:"#FF6B35",color:"#000",border:"none",padding:"12px 24px",borderRadius:6,fontSize:14,fontWeight:800,letterSpacing:2,width:"100%",cursor:"pointer"},
-  topBar: {display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",borderBottom:"1px solid #1a1a1a"},
-  back: {background:"none",border:"1px solid #444",color:"#ccc",padding:"5px 10px",borderRadius:6,fontSize:13,fontFamily:"inherit"},
-  badge: {padding:"3px 8px",borderRadius:4,fontSize:10,fontWeight:700,color:"#fff",letterSpacing:1},
-  dayHead: {padding:"12px 14px 10px",borderBottom:"1px solid #151515"},
-  doneBadge: {marginTop:6,display:"inline-block",padding:"3px 10px",background:"#4CAF5022",color:"#4CAF50",borderRadius:4,fontSize:11,fontWeight:700,border:"1px solid #4CAF5044"},
-  card: {background:"#141414",borderRadius:8,padding:"10px 12px",marginBottom:5,borderLeft:"3px solid"},
-  chk: {width:26,height:26,minWidth:26,borderRadius:6,border:"2px solid",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:"#fff",cursor:"pointer"},
-  wInput: {width:55,background:"#1a1a1a",border:"1px solid #333",borderRadius:4,color:"#FF6B35",padding:"3px 6px",fontSize:13,fontFamily:"inherit",textAlign:"center"},
-  statBox: {flex:1,textAlign:"center"},
-  statN: {fontSize:20,fontWeight:700,color:"#FF6B35"},
-  statL: {fontSize:9,color:"#666",textTransform:"uppercase",letterSpacing:1},
-  dayCell: {flex:1,border:"1px solid #333",borderRadius:5,padding:"5px 1px",textAlign:"center",background:"#1a1a1a",cursor:"pointer"},
+  screen: { maxWidth:480, margin:"0 auto", background:"#F5F5F3", minHeight:"100vh", color:"#1A1A1A" },
+  startScreen: { display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
+    minHeight:"100vh", background:"#F5F5F3", padding:24 },
+
+  pageHeader: { display:"flex", alignItems:"center", justifyContent:"space-between", padding:"14px 16px",
+    background:"#F5F5F3", position:"sticky", top:0, zIndex:10 },
+  iconBtn: { width:36, height:36, borderRadius:10, background:"#FFFFFF", border:"1px solid #E5E5E1",
+    display:"flex", alignItems:"center", justifyContent:"center", color:"#1A1A1A" },
+
+  homeHeader: { display:"flex", alignItems:"flex-start", justifyContent:"space-between", padding:"16px 16px 20px" },
+  headBtn: { width:42, height:42, borderRadius:12, background:"#FFFFFF", border:"1px solid #E5E5E1",
+    display:"flex", alignItems:"center", justifyContent:"center", color:"#1A1A1A" },
+
+  h1: { fontSize:26, fontWeight:800, letterSpacing:-0.5, margin:0, color:"#1A1A1A" },
+
+  card: { background:"#FFFFFF", border:"1px solid #E5E5E1", borderRadius:16 },
+
+  statCard: { background:"#FFFFFF", border:"1px solid #E5E5E1", borderRadius:16, padding:16, minHeight:120 },
+
+  todayCard: { width:"100%", background:"#1A1A1A", border:"none", borderRadius:18, padding:20, color:"#fff" },
+  todayCardLight: { width:"100%", background:"#FFFFFF", border:"1px solid #E5E5E1", borderRadius:18, padding:20 },
+
+  badge: { display:"inline-flex", alignItems:"center", gap:6, padding:"5px 10px", borderRadius:6, fontSize:11, fontWeight:700, letterSpacing:0.5, textTransform:"uppercase" },
+
+  progressRow: { display:"flex", alignItems:"center", gap:12 },
+  progressBar: { flex:1, height:6, background:"#E8E8E4", borderRadius:3, overflow:"hidden" },
+  progressFill: { height:"100%", background:"#1A1A1A", borderRadius:3, transition:"width .4s" },
+
+  exCard: { display:"flex", alignItems:"flex-start", gap:12, background:"#FFFFFF",
+    border:"1px solid #E5E5E1", borderRadius:14, padding:14, marginBottom:8 },
+  chk: { width:28, height:28, minWidth:28, borderRadius:8, border:"2px solid", display:"flex",
+    alignItems:"center", justifyContent:"center", flexShrink:0, marginTop:2, transition:"all .2s" },
+  tierBadge: { fontSize:9, fontWeight:800, letterSpacing:0.5, color:"#fff", padding:"2px 6px", borderRadius:4 },
+
+  weightInputWrap: { display:"flex", alignItems:"center", gap:6, marginTop:10, paddingTop:10,
+    borderTop:"1px solid #E5E5E1" },
+  weightIn: { width:70, background:"#EFEFED", border:"1px solid #E5E5E1", borderRadius:8,
+    color:"#1A1A1A", padding:"6px 10px", fontSize:14, fontWeight:600, textAlign:"center" },
+
+  phaseLabel: { display:"flex", alignItems:"center", gap:8, padding:"16px 6px 10px", fontSize:11,
+    fontWeight:700, letterSpacing:1.5, textTransform:"uppercase", color:"#8A8A86" },
+  phaseDot: { width:8, height:8, borderRadius:4, display:"inline-block", flexShrink:0 },
+
+  weekCard: { background:"#FFFFFF", border:"1px solid #E5E5E1", borderRadius:14, padding:16, marginBottom:10 },
+
+  daysGrid: { display:"grid", gridTemplateColumns:"repeat(7, 1fr)", gap:5 },
+  dayPill: { aspectRatio:"1/1.15", border:"1px solid #E5E5E1", borderRadius:10, background:"#FFFFFF",
+    display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:2,
+    color:"#1A1A1A", transition:"all .15s" },
+
+  resetBtn: { display:"block", margin:"8px auto 0", background:"transparent", border:"none",
+    color:"#B8B8B4", padding:"10px 16px", fontSize:12, fontWeight:500 },
 };
 
 ReactDOM.render(<App/>, document.getElementById("root"));
