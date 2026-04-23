@@ -4,10 +4,11 @@
   "description": "16-недельная программа силы и гипертрофии",
   "start_url": "./index.html",
   "display": "standalone",
-  "background_color": "#0a0a0a",
-  "theme_color": "#0a0a0a",
+  "background_color": "#EFEBE4",
+  "theme_color": "#EFEBE4",
   "orientation": "portrait",
   "icons": [
+    { "src": "icon-180.png", "sizes": "180x180", "type": "image/png" },
     { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
     { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" }
   ]
