@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>IRON Protocol</title>
+<title>MATRIX Protocol</title>
 
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="IRON">
+<meta name="apple-mobile-web-app-title" content="MATRIX">
 <meta name="theme-color" content="#EFEBE4">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon-180.png">
@@ -23,7 +23,7 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     overflow-x: hidden;
-    line-height: 1.3;
+    line-height: 1.4;
     font-size: 15px;
   }
   body {
@@ -32,19 +32,19 @@
     padding-bottom: env(safe-area-inset-bottom);
   }
   button { font-family: inherit; border: none; cursor: pointer; background: none; color: inherit; font-size: inherit; }
-  input { font-family: inherit; font-size: inherit; color: inherit; }
+  input, textarea { font-family: inherit; font-size: inherit; color: inherit; }
+  textarea { resize: none; }
   h1, h2, h3 { font-weight: 900; letter-spacing: -0.04em; }
   ::-webkit-scrollbar { display: none; }
-  input[type="date"] { -webkit-appearance: none; appearance: none; min-height: 48px; }
   input[type="number"] { -webkit-appearance: none; appearance: none; }
-  input[type="number"]::-webkit-outer-spin-button,
-  input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  input[type="range"] { -webkit-appearance: none; appearance: none; height: 2px; background: #D8D3CB; outline: none; }
+  input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 22px; height: 22px; background: #5B4FCF; border-radius: 50%; cursor: pointer; }
+  input[type="range"]::-moz-range-thumb { width: 22px; height: 22px; background: #5B4FCF; border-radius: 50%; cursor: pointer; border: none; }
 
-  .tbig {
-    font-weight: 900;
-    letter-spacing: -0.05em;
-    line-height: 0.9;
-  }
+  .tbig { font-weight: 900; letter-spacing: -0.05em; line-height: 0.9; }
+  .quote { font-style: italic; color: #4A4642; line-height: 1.5; }
+  .body-text { line-height: 1.55; color: #1A1A1A; }
+  .body-text p { margin-bottom: 12px; }
 </style>
 </head>
 <body>
@@ -55,7 +55,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
 
 <script type="text/babel">
-const { useState, useEffect } = React;
+const { useState, useEffect, useRef } = React;
 
 // ═══ DESIGN TOKENS ══════════════════════════════════════════════════════════
 const C = {
@@ -66,530 +66,272 @@ const C = {
   textDim: "#6B6661",
   textSoft: "#A8A39D",
   border: "#D8D3CB",
-  accent: "#FF5C1F",
-  accentSoft: "#FFE4D6",
+  borderSoft: "#E8E4DD",
+  accent: "#5B4FCF",
+  accentSoft: "#E8E5F7",
   done: "#0A0A0A",
-  rest: "#2E7D4F",
-  restSoft: "#DCE8DF",
+  warm: "#2E7D4F",
+  warmSoft: "#DCE8DF",
+  alert: "#B5391D",
+  alertSoft: "#F5DCD4",
 };
 
-const SP = { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32 };
+const SP = { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32, x4: 40 };
+
+const STORAGE_KEY = "mxv1";
 
 const storage = {
-  get: (k) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; } catch { return null; } },
-  set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+  get: () => { try { const v = localStorage.getItem(STORAGE_KEY); return v ? JSON.parse(v) : null; } catch { return null; } },
+  set: (v) => { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(v)); } catch {} },
 };
 
-// ═══ 10-WEEK EVIDENCE-BASED PROGRAM ═════════════════════════════════════════
-// 6 days/week (Mon-Sat) + Sun rest
-// Mon = Lower Power (Squat)
-// Tue = Upper Press (Bench + OHP)
-// Wed = Lower Hinge (Deadlift)
-// Thu = Upper Pull (Rows + Pull-ups)
-// Fri = Lower Volume/Unilateral (light; Zercher from W6)
-// Sat = Upper Volume + Arms
-
-const PHASES = [
-  { name: "МЕЗО 1 · НАКОПЛЕНИЕ", short: "ACC", weeks: [1,2,3,4],
-    desc: "CSA + нейронный драйв. Zercher НЕ вводится. Объём MEV→MAV, RPE 6→8." },
-  { name: "ДЕЛОАД", short: "DEL", weeks: [5],
-    desc: "7-дневный деолоад. 50% объёма, 70% нагрузки, та же частота. Никаких AMRAP." },
-  { name: "МЕЗО 2 · ИНТЕНСИФИКАЦИЯ", short: "INT", weeks: [6,7,8],
-    desc: "Возврат и превышение пред-брейк 1ПМ. Zercher вводится как T2 на Fri с W6." },
-  { name: "ТЕЙПЕР", short: "TAP", weeks: [9],
-    desc: "Объём −50%, интенсивность держим. Heavy singles RPE 8, без новых вариаций." },
-  { name: "ТЕСТ 1ПМ", short: "TEST", weeks: [10],
-    desc: "4 лифта распределены: Mon Squat, Wed Bench, Fri Deadlift, Sat OHP + Zercher." },
-];
-
-const getPhase = (w) => PHASES.find(p => p.weeks.includes(w)) || PHASES[0];
-
-const DAY_NAMES_FULL = ["ВОСКРЕСЕНЬЕ","ПОНЕДЕЛЬНИК","ВТОРНИК","СРЕДА","ЧЕТВЕРГ","ПЯТНИЦА","СУББОТА"];
-const DAY_NAMES_SHORT = ["ВС","ПН","ВТ","СР","ЧТ","ПТ","СБ"];
 const MONTHS_RU = ["января","февраля","марта","апреля","мая","июня","июля","августа","сентября","октября","ноября","декабря"];
+const todayISO = () => new Date().toISOString().slice(0, 10);
+const fmtDate = (iso) => { const d = new Date(iso); return `${d.getDate()} ${MONTHS_RU[d.getMonth()]}`; };
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
-// Training day slot → dayOfWeek (Mon=1, Tue=2, Wed=3, Thu=4, Fri=5, Sat=6)
-const SLOT_TO_DOW = [1, 2, 3, 4, 5, 6];
+// ═══ PHASES (4 × 5 keys) ════════════════════════════════════════════════════
+const PHASES = [
+  { id: "base",     name: "БАЗА",         short: "BASE",   keys: [1,2,3,4,5,6,7],     desc: "Что такое матрица. Сознание творит. Чувства фокусируют." },
+  { id: "diag",     name: "ДИАГНОСТИКА",  short: "DIAG",   keys: [8,9,10,11],         desc: "Язык чувств. Сострадание без эго. Стать тем опытом." },
+  { id: "holo",     name: "ГОЛОГРАФИЯ",   short: "HOLO",   keys: [12,13,14,15,16],    desc: "Не ограничены законами. 1% меняет всё. Тут=там, тогда=сейчас." },
+  { id: "integr",   name: "ИНТЕГРАЦИЯ",   short: "INTG",   keys: [17,18,19,20],       desc: "Зеркало мира. Три страха. Зеркала отношений. Стать воплощением." },
+];
+const phaseOf = (k) => PHASES.find(p => p.keys.includes(k)) || PHASES[0];
 
-function buildProgram() {
-  const W = {};
+// ═══ 20 KEYS ════════════════════════════════════════════════════════════════
+const KEYS = [
+  { n: 1, title: "Матрица — вместилище, мост и зеркало",
+    quote: "Материя возникает и существует только под действием силы… Мы усматриваем за этой силой наличие некоего сознательного Разума, который и является матрицей всего сущего. — Макс Планк, 1944",
+    body: [
+      "Брейден, ссылаясь на Планка, утверждает: всё мироздание — единое поле энергии, в котором рождается материя. Это поле он называет Божественной матрицей.",
+      "У матрицы три функции: она вмещает всё (включая нас), соединяет всё (мост между внутренним и внешним), отражает всё, что мы на неё проецируем (зеркало).",
+      "Вы — не наблюдатель снаружи. Вы — холст, изображение, кисть и художник одновременно.",
+    ],
+    ex: "Найди 60 секунд тишины. Произнеси про себя: «Всё, что я вижу — отражение того, что во мне». Не пытайся в это поверить. Просто послушай, что внутри отзывается, а что сопротивляется." },
 
-  // ═══ WEEK 1 — baseline, RPE 6, ~60-62% TM ═══════════════════════════════
-  W[1] = { days: [
-    // Mon — Lower Power
-    { name: "LOWER POWER", ex: [
-      { id:"w1d1e1", t:"T1", n:"Back Squat (штанга)", s:"4×5", r:"6", note:"60% TM" },
-      { id:"w1d1e2", t:"T2", n:"Paused High-Bar Squat", s:"3×6", r:"6", note:"55% TM · tempo 3-1-1" },
-      { id:"w1d1e3", t:"T3", n:"Bulgarian Split Squat (DB 2×15)", s:"3×10/ногу", r:"7" },
-      { id:"w1d1e4", t:"T3", n:"Leg Extension", s:"3×12", r:"7" },
-      { id:"w1d1e5", t:"T3", n:"Standing Calf Raise (KB)", s:"3×15", r:"7" },
-      { id:"w1d1e6", t:"T3", n:"Plank", s:"3×45 сек", r:"7" },
-    ]},
-    // Tue — Upper Press
-    { name: "UPPER PRESS", ex: [
-      { id:"w1d2e1", t:"T1", n:"Bench Press (штанга)", s:"4×6", r:"6", note:"62% TM" },
-      { id:"w1d2e2", t:"T1", n:"OHP (штанга)", s:"4×6", r:"6", note:"60% TM" },
-      { id:"w1d2e3", t:"T3", n:"DB Incline Press (2×17.5)", s:"3×10", r:"7" },
-      { id:"w1d2e4", t:"T3", n:"Lateral Raise (DB)", s:"3×12", r:"7" },
-      { id:"w1d2e5", t:"T3", n:"Triceps Pushdown (rope)", s:"3×12", r:"7" },
-      { id:"w1d2e6", t:"T3", n:"Опц: AirBike 8×20/40с", s:"≥6ч после лифта", r:"7" },
-    ]},
-    // Wed — Lower Hinge
-    { name: "LOWER HINGE", ex: [
-      { id:"w1d3e1", t:"T1", n:"Conventional Deadlift", s:"4×4", r:"6", note:"60% TM" },
-      { id:"w1d3e2", t:"T2", n:"Romanian Deadlift (RDL)", s:"3×8", r:"6", note:"55%" },
-      { id:"w1d3e3", t:"T3", n:"45° Back Extension (GHD, BW)", s:"3×12", r:"7" },
-      { id:"w1d3e4", t:"T3", n:"Leg Curl", s:"3×12", r:"7" },
-      { id:"w1d3e5", t:"T3", n:"Seated Calf Raise (DB)", s:"3×15", r:"7" },
-      { id:"w1d3e6", t:"T3", n:"Hanging Knee Raise", s:"3×10", r:"7" },
-    ]},
-    // Thu — Upper Pull
-    { name: "UPPER PULL", ex: [
-      { id:"w1d4e1", t:"T1", n:"Pendlay Row (штанга)", s:"4×6", r:"6" },
-      { id:"w1d4e2", t:"T1", n:"Weighted Pull-up (пояс)", s:"4×5", r:"6" },
-      { id:"w1d4e3", t:"T3", n:"Chest-Supported DB Row (2×20)", s:"3×12", r:"7" },
-      { id:"w1d4e4", t:"T3", n:"Face Pull (кабель, rope)", s:"3×15", r:"7" },
-      { id:"w1d4e5", t:"T3", n:"Incline DB Curl (2×12.5)", s:"3×10", r:"7" },
-      { id:"w1d4e6", t:"T3", n:"C2 Rower 5×250м", s:"RPE 7, отдых 1:1", r:"7" },
-    ]},
-    // Fri — Lower Volume / Unilateral (NO Zercher yet)
-    { name: "LOWER PUMP · БЕЗ ZERCHER", ex: [
-      { id:"w1d5e1", t:"T1", n:"Front Squat (темпо 3-0-1)", s:"3×6", r:"6", note:"50% FS TM" },
-      { id:"w1d5e2", t:"T2", n:"Bulgarian Split Squat (DB 2×17.5)", s:"4×10/ногу", r:"7" },
-      { id:"w1d5e3", t:"T3", n:"GHR (GHD, BW)", s:"3×8", r:"7" },
-      { id:"w1d5e4", t:"T3", n:"Reverse Hyper (GHD, BW)", s:"3×15", r:"7" },
-      { id:"w1d5e5", t:"T3", n:"Heel-Elev. Goblet Squat (KB 24)", s:"3×15", r:"7" },
-    ]},
-    // Sat — Upper Volume + Arms
-    { name: "UPPER VOLUME + ARMS", ex: [
-      { id:"w1d6e1", t:"T1", n:"Close-Grip Bench Press", s:"4×8", r:"6" },
-      { id:"w1d6e2", t:"T2", n:"Seated DB OHP (2×15)", s:"3×10", r:"7" },
-      { id:"w1d6e3", t:"T3", n:"Ring Push-up", s:"3×AMRAP-2", r:"7" },
-      { id:"w1d6e4", t:"T3", n:"Cable Crossover (одной рукой)", s:"3×12/рука", r:"7" },
-      { id:"w1d6e5", t:"T3", n:"Spider Curl (DB 2×10)", s:"3×12", r:"7" },
-      { id:"w1d6e6", t:"T3", n:"Overhead Triceps Ext. (KB)", s:"3×12", r:"7" },
-    ]},
-  ]};
+  { n: 2, title: "Всё в мире взаимосвязано",
+    quote: "Эксперимент Бакстера: ДНК человека продолжает реагировать на эмоции хозяина даже на расстоянии в сотни километров.",
+    body: [
+      "Брейден приводит три эксперимента (армия США, Военный медицинский исследовательский центр Бакстера, эксперимент Полонина): человеческие эмоции воздействуют на ДНК, а ДНК — на квантовое поле. Эффект не зависит от расстояния.",
+      "Связи невидимы, но они работают. Мы не острова — мы складки одного покрывала.",
+    ],
+    ex: "Подумай о трёх людях из своей жизни — близком, далёком, и одном уже умершем. Удерживай их образы одновременно 30 секунд. Не делай ничего — просто отметь, что связь между вами есть прямо сейчас." },
 
-  // ═══ WEEK 2 — RPE 7, +2.5 верх / +5 низ, +1 сет T1 ═══════════════════════
-  W[2] = { days: [
-    { name: "LOWER POWER", ex: [
-      { id:"w2d1e1", t:"T1", n:"Back Squat", s:"5×5", r:"7", note:"65% TM" },
-      { id:"w2d1e2", t:"T2", n:"Paused High-Bar Squat", s:"4×6", r:"7", note:"57% · 3-1-1" },
-      { id:"w2d1e3", t:"T3", n:"Bulgarian Split Squat (DB 2×17.5)", s:"3×10/ногу", r:"7" },
-      { id:"w2d1e4", t:"T3", n:"Leg Extension", s:"3×12", r:"7" },
-      { id:"w2d1e5", t:"T3", n:"Standing Calf Raise", s:"3×15", r:"7" },
-      { id:"w2d1e6", t:"T3", n:"Plank", s:"3×60 сек", r:"7" },
-    ]},
-    { name: "UPPER PRESS", ex: [
-      { id:"w2d2e1", t:"T1", n:"Bench Press", s:"5×6", r:"7", note:"65% TM" },
-      { id:"w2d2e2", t:"T1", n:"OHP", s:"5×6", r:"7", note:"62% TM" },
-      { id:"w2d2e3", t:"T3", n:"DB Incline Press (2×20)", s:"3×10", r:"7" },
-      { id:"w2d2e4", t:"T3", n:"Lateral Raise", s:"4×12", r:"7" },
-      { id:"w2d2e5", t:"T3", n:"Triceps Pushdown", s:"3×12", r:"7" },
-    ]},
-    { name: "LOWER HINGE", ex: [
-      { id:"w2d3e1", t:"T1", n:"Conventional Deadlift", s:"5×4", r:"7", note:"65% TM" },
-      { id:"w2d3e2", t:"T2", n:"RDL", s:"4×8", r:"7" },
-      { id:"w2d3e3", t:"T3", n:"45° Back Ext. (GHD + 10кг)", s:"3×12", r:"7" },
-      { id:"w2d3e4", t:"T3", n:"Leg Curl", s:"3×12", r:"7" },
-      { id:"w2d3e5", t:"T3", n:"Hanging Knee Raise", s:"3×12", r:"7" },
-    ]},
-    { name: "UPPER PULL", ex: [
-      { id:"w2d4e1", t:"T1", n:"Pendlay Row", s:"5×6", r:"7" },
-      { id:"w2d4e2", t:"T1", n:"Weighted Pull-up (+2.5кг)", s:"4×5", r:"7" },
-      { id:"w2d4e3", t:"T3", n:"Chest-Supported DB Row (2×22.5)", s:"3×12", r:"7" },
-      { id:"w2d4e4", t:"T3", n:"Face Pull", s:"3×15", r:"7" },
-      { id:"w2d4e5", t:"T3", n:"Incline DB Curl", s:"3×12", r:"7" },
-      { id:"w2d4e6", t:"T3", n:"C2 Rower 5×500м", s:"RPE 7", r:"7" },
-    ]},
-    { name: "LOWER PUMP · БЕЗ ZERCHER", ex: [
-      { id:"w2d5e1", t:"T1", n:"Front Squat", s:"4×6", r:"6-7", note:"55% FS TM" },
-      { id:"w2d5e2", t:"T2", n:"Bulgarian Split Squat (DB 2×20)", s:"4×10/ногу", r:"7" },
-      { id:"w2d5e3", t:"T3", n:"GHR", s:"3×10", r:"7" },
-      { id:"w2d5e4", t:"T3", n:"Reverse Hyper", s:"3×15", r:"7" },
-      { id:"w2d5e5", t:"T3", n:"Goblet Squat (KB 28)", s:"3×15", r:"7" },
-    ]},
-    { name: "UPPER VOLUME + ARMS", ex: [
-      { id:"w2d6e1", t:"T1", n:"Close-Grip Bench", s:"4×8", r:"7" },
-      { id:"w2d6e2", t:"T2", n:"Seated DB OHP (2×17.5)", s:"3×10", r:"7" },
-      { id:"w2d6e3", t:"T3", n:"Ring Push-up", s:"3×AMRAP-2", r:"7" },
-      { id:"w2d6e4", t:"T3", n:"Cable Crossover", s:"3×12/рука", r:"7" },
-      { id:"w2d6e5", t:"T3", n:"Spider Curl", s:"3×12", r:"7" },
-      { id:"w2d6e6", t:"T3", n:"OH Triceps Extension", s:"3×12", r:"7" },
-    ]},
-  ]};
+  { n: 3, title: "Почувствовать себя частью Целого",
+    quote: "Чтобы овладеть силой Вселенной, мы должны почувствовать себя частью мирового Целого, а не малым обособленным целым.",
+    body: [
+      "Сила приходит не через отделение «я против мира», а через включённость. Брейден настаивает: пока вы боретесь со Вселенной, вы боретесь с собой.",
+      "«Часть Целого» — не метафора. Это рабочая позиция, из которой можно говорить с матрицей.",
+    ],
+    ex: "Выйди на воздух на 5 минут. Найди три объекта (живых или нет), на которые посмотришь и скажешь: «И я тоже». Дерево — и я тоже. Прохожий — и я тоже. Камень — и я тоже." },
 
-  // ═══ WEEK 3 — RPE 8, 72-75% TM ═══════════════════════════════════════
-  W[3] = { days: [
-    { name: "LOWER POWER", ex: [
-      { id:"w3d1e1", t:"T1", n:"Back Squat", s:"4×5", r:"8", note:"72% TM" },
-      { id:"w3d1e2", t:"T2", n:"Paused High-Bar Squat", s:"4×5", r:"7-8", note:"65%" },
-      { id:"w3d1e3", t:"T3", n:"Bulgarian Split Squat (DB 2×22.5)", s:"4×10/ногу", r:"7-8" },
-      { id:"w3d1e4", t:"T3", n:"Leg Extension", s:"3×15", r:"8" },
-      { id:"w3d1e5", t:"T3", n:"Standing Calf Raise", s:"4×15", r:"8" },
-      { id:"w3d1e6", t:"T3", n:"Ab Wheel", s:"3×10", r:"7" },
-    ]},
-    { name: "UPPER PRESS", ex: [
-      { id:"w3d2e1", t:"T1", n:"Bench Press", s:"4×5", r:"8", note:"72% TM" },
-      { id:"w3d2e2", t:"T1", n:"OHP", s:"4×5", r:"8", note:"70% TM" },
-      { id:"w3d2e3", t:"T3", n:"DB Incline Press (2×22.5)", s:"4×10", r:"7-8" },
-      { id:"w3d2e4", t:"T3", n:"Lateral Raise", s:"4×15", r:"7" },
-      { id:"w3d2e5", t:"T3", n:"Triceps Pushdown", s:"3×12", r:"7-8" },
-    ]},
-    { name: "LOWER HINGE", ex: [
-      { id:"w3d3e1", t:"T1", n:"Conventional Deadlift", s:"4×3", r:"8", note:"72% TM" },
-      { id:"w3d3e2", t:"T2", n:"RDL", s:"4×8", r:"7-8" },
-      { id:"w3d3e3", t:"T3", n:"45° Back Ext. (+15кг)", s:"3×12", r:"7-8" },
-      { id:"w3d3e4", t:"T3", n:"Leg Curl", s:"4×12", r:"7-8" },
-      { id:"w3d3e5", t:"T3", n:"Hanging Knee Raise", s:"3×12", r:"7" },
-    ]},
-    { name: "UPPER PULL", ex: [
-      { id:"w3d4e1", t:"T1", n:"Pendlay Row", s:"4×5", r:"8" },
-      { id:"w3d4e2", t:"T1", n:"Weighted Pull-up (+5кг)", s:"4×5", r:"8" },
-      { id:"w3d4e3", t:"T3", n:"Chest-Supported DB Row (2×25)", s:"4×12", r:"7-8" },
-      { id:"w3d4e4", t:"T3", n:"Face Pull", s:"4×15", r:"7" },
-      { id:"w3d4e5", t:"T3", n:"Incline DB Curl", s:"3×12", r:"7-8" },
-    ]},
-    { name: "LOWER PUMP · БЕЗ ZERCHER", ex: [
-      { id:"w3d5e1", t:"T1", n:"Front Squat", s:"4×5", r:"7", note:"60% FS TM" },
-      { id:"w3d5e2", t:"T2", n:"Bulgarian Split Squat (DB 2×22.5)", s:"4×10/ногу", r:"7-8" },
-      { id:"w3d5e3", t:"T3", n:"GHR", s:"4×8", r:"7-8" },
-      { id:"w3d5e4", t:"T3", n:"Reverse Hyper", s:"3×15", r:"7" },
-      { id:"w3d5e5", t:"T3", n:"Sled Push (light)", s:"4×20м", r:"7" },
-    ]},
-    { name: "UPPER VOLUME + ARMS", ex: [
-      { id:"w3d6e1", t:"T1", n:"Close-Grip Bench", s:"5×5", r:"8" },
-      { id:"w3d6e2", t:"T2", n:"Seated DB OHP (2×20)", s:"4×8", r:"7-8" },
-      { id:"w3d6e3", t:"T3", n:"Ring Push-up (с весом если легко)", s:"4×AMRAP-2", r:"7" },
-      { id:"w3d6e4", t:"T3", n:"Cable Crossover", s:"4×12/рука", r:"7" },
-      { id:"w3d6e5", t:"T3", n:"Spider Curl", s:"3×12", r:"7-8" },
-      { id:"w3d6e6", t:"T3", n:"OH Triceps Ext.", s:"3×12", r:"7-8" },
-    ]},
-  ]};
+  { n: 4, title: "Соединённое однажды — соединено навсегда",
+    quote: "Все объекты, когда-либо бывшие частями целого, остаются соединенными навсегда, независимо от того, сохраняется ли между ними физическая связь.",
+    body: [
+      "Это квантовая запутанность, перенесённая Брейденом на уровень человеческой жизни. Всё, с чем вы когда-либо соприкасались — люди, места, прошлые «я» — остаётся связанным с вами.",
+      "Прошлое не закрыто. Оно всё ещё участвует.",
+    ],
+    ex: "Вспомни одного человека, с которым отношения «закрыты». Подержи его образ 30 секунд без оценки. Заметь: связь не исчезла. Это нейтральный факт, не приговор." },
 
-  // ═══ WEEK 4 — RPE 8.5, 77-80% TM, MAV peak ═══════════════════════════
-  W[4] = { days: [
-    { name: "LOWER POWER · MAV", ex: [
-      { id:"w4d1e1", t:"T1", n:"Back Squat", s:"3×4", r:"8.5", note:"78% TM + back-off 2×6 @ 65%" },
-      { id:"w4d1e2", t:"T2", n:"Paused High-Bar Squat", s:"3×5", r:"8", note:"68%" },
-      { id:"w4d1e3", t:"T3", n:"Bulgarian Split Squat", s:"4×8/ногу", r:"8" },
-      { id:"w4d1e4", t:"T3", n:"Leg Extension", s:"3×15", r:"8" },
-      { id:"w4d1e5", t:"T3", n:"Ab Wheel", s:"3×12", r:"7" },
-    ]},
-    { name: "UPPER PRESS · MAV", ex: [
-      { id:"w4d2e1", t:"T1", n:"Bench Press", s:"3×4", r:"8.5", note:"78% + back-off 2×6 @ 65%" },
-      { id:"w4d2e2", t:"T1", n:"OHP", s:"3×4", r:"8", note:"75%" },
-      { id:"w4d2e3", t:"T3", n:"DB Incline Press (2×25 если хватает)", s:"4×10", r:"8" },
-      { id:"w4d2e4", t:"T3", n:"Lateral Raise", s:"4×15", r:"7" },
-      { id:"w4d2e5", t:"T3", n:"Triceps Pushdown", s:"3×12", r:"8" },
-    ]},
-    { name: "LOWER HINGE · MAV", ex: [
-      { id:"w4d3e1", t:"T1", n:"Conventional Deadlift", s:"3×3", r:"8.5", note:"78% TM · 2 в запасе" },
-      { id:"w4d3e2", t:"T2", n:"RDL", s:"4×6", r:"8" },
-      { id:"w4d3e3", t:"T3", n:"45° Back Ext. (+20кг)", s:"3×12", r:"8" },
-      { id:"w4d3e4", t:"T3", n:"Leg Curl", s:"3×12", r:"8" },
-      { id:"w4d3e5", t:"T3", n:"Hanging Knee Raise", s:"3×15", r:"7" },
-    ]},
-    { name: "UPPER PULL · MAV", ex: [
-      { id:"w4d4e1", t:"T1", n:"Pendlay Row", s:"4×4", r:"8" },
-      { id:"w4d4e2", t:"T1", n:"Weighted Pull-up (+7.5кг)", s:"4×4", r:"8" },
-      { id:"w4d4e3", t:"T3", n:"Chest-Supported DB Row", s:"4×10", r:"8" },
-      { id:"w4d4e4", t:"T3", n:"Face Pull", s:"3×15", r:"7" },
-      { id:"w4d4e5", t:"T3", n:"Incline DB Curl", s:"3×12", r:"8" },
-    ]},
-    { name: "LOWER PUMP · БЕЗ ZERCHER", ex: [
-      { id:"w4d5e1", t:"T1", n:"Front Squat", s:"3×5", r:"7", note:"65% FS TM · НЕ третий тяжёлый!" },
-      { id:"w4d5e2", t:"T2", n:"Bulgarian Split Squat", s:"3×10/ногу", r:"7-8" },
-      { id:"w4d5e3", t:"T3", n:"GHR", s:"3×10", r:"8" },
-      { id:"w4d5e4", t:"T3", n:"Reverse Hyper", s:"3×15", r:"7" },
-    ]},
-    { name: "UPPER VOLUME + ARMS", ex: [
-      { id:"w4d6e1", t:"T1", n:"Close-Grip Bench", s:"4×6", r:"8" },
-      { id:"w4d6e2", t:"T2", n:"Seated DB OHP (2×22.5)", s:"4×8", r:"8" },
-      { id:"w4d6e3", t:"T3", n:"Ring Dip (если готов, иначе Ring Push-up)", s:"3×8", r:"7" },
-      { id:"w4d6e4", t:"T3", n:"Cable Crossover", s:"4×12/рука", r:"7" },
-      { id:"w4d6e5", t:"T3", n:"Spider Curl", s:"3×12", r:"8" },
-      { id:"w4d6e6", t:"T3", n:"OH Triceps Ext.", s:"3×12", r:"8" },
-    ]},
-  ]};
+  { n: 5, title: "Сознание творит",
+    quote: "Прежнего пассивного наблюдателя следует вычеркнуть из книг. Ему на смену должен прийти полноправный участник мирового процесса. — Джон Уилер",
+    body: [
+      "Брейден ссылается на эксперименты Уилера: акт наблюдения меняет наблюдаемое. Мы — не зрители, а участники.",
+      "Из этого следует прямой вывод: то, на чём вы фокусируетесь, начинает существовать сильнее, чем то, что вы игнорируете.",
+    ],
+    ex: "Выбери одно качество в себе, которое ты часто критикуешь. Сегодня попробуй на него не смотреть. Не «бороться». Не подкреплять и не игнорировать. Просто перенести фокус на что-то другое и заметить эффект к вечеру." },
 
-  // ═══ WEEK 5 — FULL 7-DAY DELOAD — 50% объёма, 70% нагрузки ══════════════
-  W[5] = { days: [
-    { name: "DELOAD · LIGHT SQUAT", ex: [
-      { id:"w5d1e1", t:"T1", n:"Back Squat", s:"3×5", r:"5", note:"55% TM" },
-      { id:"w5d1e2", t:"T3", n:"Bulgarian Split Squat (light)", s:"2×10/ногу", r:"5" },
-      { id:"w5d1e3", t:"T3", n:"Мобильность 10 мин", s:"", r:"" },
-    ]},
-    { name: "DELOAD · LIGHT PRESS", ex: [
-      { id:"w5d2e1", t:"T1", n:"Bench Press", s:"3×5", r:"5", note:"55% TM" },
-      { id:"w5d2e2", t:"T1", n:"OHP", s:"3×5", r:"5", note:"55% TM" },
-      { id:"w5d2e3", t:"T3", n:"Face Pull", s:"3×15", r:"5" },
-      { id:"w5d2e4", t:"T3", n:"AirBike Z2 10 мин", s:"лёгкий темп", r:"5" },
-    ]},
-    { name: "DELOAD · LIGHT DL", ex: [
-      { id:"w5d3e1", t:"T1", n:"Conventional Deadlift", s:"3×3", r:"5", note:"55% TM" },
-      { id:"w5d3e2", t:"T3", n:"RDL (light)", s:"2×8", r:"5" },
-      { id:"w5d3e3", t:"T3", n:"C2 Row Z2 10 мин", s:"лёгкий темп", r:"5" },
-    ]},
-    { name: "DELOAD · LIGHT UPPER", ex: [
-      { id:"w5d4e1", t:"T1", n:"Bench Press", s:"3×5", r:"5", note:"55% TM" },
-      { id:"w5d4e2", t:"T1", n:"Pull-up (BW, не AMRAP)", s:"3×3", r:"5" },
-      { id:"w5d4e3", t:"T3", n:"Face Pull", s:"3×15", r:"5" },
-    ]},
-    { name: "REST · МОБИЛЬНОСТЬ", ex: [
-      { id:"w5d5e1", t:"T3", n:"Мобильность + растяжка 20 мин", s:"", r:"" },
-      { id:"w5d5e2", t:"T3", n:"Прогулка 30-40 мин", s:"", r:"" },
-    ]},
-    { name: "TECHNICAL · ВОЗВРАТ", ex: [
-      { id:"w5d6e1", t:"T3", n:"Front Squat (техника)", s:"3×3 @ 50% FS TM", r:"5" },
-      { id:"w5d6e2", t:"T3", n:"Ring Push-up", s:"2×10", r:"5" },
-      { id:"w5d6e3", t:"T3", n:"45° Back Extension (BW)", s:"2×10", r:"5" },
-    ]},
-  ]};
+  { n: 6, title: "У нас достаточно силы",
+    quote: "У нас достаточно силы, чтобы произвести в мире любые изменения. Эта сила заключена в нашем сознании!",
+    body: [
+      "Это не риторика. Это рабочее предположение: сила всегда уже есть, вопрос только в том, использует ли её человек.",
+      "Брейден настаивает: чувство собственного бессилия — не факт реальности, а внутренняя установка, отражающаяся в матрице.",
+    ],
+    ex: "Запиши одну ситуацию, в которой ты сейчас чувствуешь себя бессильным. Под ней напиши: «Сила есть, но я выбираю её сейчас не использовать, потому что ___». Будь предельно честен с продолжением." },
 
-  // ═══ WEEK 6 — RPE 7, 75% TM, ZERCHER ВВОДИТСЯ ═════════════════════════
-  W[6] = { days: [
-    { name: "LOWER POWER", ex: [
-      { id:"w6d1e1", t:"T1", n:"Back Squat", s:"5×3", r:"7", note:"75% TM" },
-      { id:"w6d1e2", t:"T2", n:"Pause Squat (2-сек в яме)", s:"3×5", r:"7", note:"70%" },
-      { id:"w6d1e3", t:"T3", n:"Bulgarian Split Squat (DB 2×25)", s:"3×10/ногу", r:"7-8" },
-      { id:"w6d1e4", t:"T3", n:"Leg Extension", s:"3×15", r:"8" },
-      { id:"w6d1e5", t:"T3", n:"Calf Raise", s:"3×15", r:"7" },
-    ]},
-    { name: "UPPER PRESS", ex: [
-      { id:"w6d2e1", t:"T1", n:"Bench Press", s:"5×3", r:"7", note:"75% TM" },
-      { id:"w6d2e2", t:"T1", n:"OHP", s:"4×5", r:"7", note:"70% TM" },
-      { id:"w6d2e3", t:"T3", n:"BB Incline (если DB 25 мало)", s:"4×8", r:"7-8" },
-      { id:"w6d2e4", t:"T3", n:"Lateral Raise", s:"3×15", r:"7" },
-      { id:"w6d2e5", t:"T3", n:"Triceps Pushdown", s:"3×12", r:"7-8" },
-      { id:"w6d2e6", t:"T3", n:"AirBike 10×20/40с", s:"≥6ч после", r:"7" },
-    ]},
-    { name: "LOWER HINGE", ex: [
-      { id:"w6d3e1", t:"T1", n:"Conventional Deadlift", s:"4×3", r:"7", note:"75% TM" },
-      { id:"w6d3e2", t:"T2", n:"Deficit DL (2.5см деф.)", s:"3×5", r:"7", note:"65%" },
-      { id:"w6d3e3", t:"T3", n:"45° Back Ext. (+15-20кг)", s:"3×12", r:"7-8" },
-      { id:"w6d3e4", t:"T3", n:"Leg Curl", s:"3×12", r:"7-8" },
-      { id:"w6d3e5", t:"T3", n:"Hanging Leg Raise", s:"3×10", r:"7" },
-    ]},
-    { name: "UPPER PULL", ex: [
-      { id:"w6d4e1", t:"T1", n:"Pendlay Row", s:"5×4", r:"7" },
-      { id:"w6d4e2", t:"T1", n:"Weighted Pull-up (+5-10кг)", s:"4×5", r:"7" },
-      { id:"w6d4e3", t:"T3", n:"Chest-Supported DB Row (2×25)", s:"3×12", r:"7-8" },
-      { id:"w6d4e4", t:"T3", n:"Face Pull", s:"3×15", r:"7" },
-      { id:"w6d4e5", t:"T3", n:"Incline DB Curl", s:"3×10", r:"7-8" },
-      { id:"w6d4e6", t:"T3", n:"C2 Row 5×500м", s:"RPE 8", r:"8" },
-    ]},
-    { name: "LOWER VOLUME · ZERCHER ⚡", ex: [
-      { id:"w6d5e1", t:"T2", n:"Zercher Squat (полотенце + рукав)", s:"3×8 @ 45-50кг", r:"6", note:"Темп 3-1-1 · ПЕРВАЯ экспозиция!" },
-      { id:"w6d5e2", t:"T3", n:"Bulgarian Split Squat", s:"3×12/ногу", r:"7-8" },
-      { id:"w6d5e3", t:"T3", n:"GHR", s:"3×8", r:"8" },
-      { id:"w6d5e4", t:"T3", n:"Reverse Hyper", s:"3×15", r:"7" },
-      { id:"w6d5e5", t:"T3", n:"Sled Push (heavy, 1.2×BW)", s:"5×20м", r:"8" },
-    ]},
-    { name: "UPPER VOLUME + ARMS", ex: [
-      { id:"w6d6e1", t:"T1", n:"Close-Grip Bench", s:"5×5", r:"7" },
-      { id:"w6d6e2", t:"T2", n:"Seated DB OHP (2×22.5)", s:"3×10", r:"7-8" },
-      { id:"w6d6e3", t:"T3", n:"Ring Dip", s:"3×6-10", r:"7" },
-      { id:"w6d6e4", t:"T3", n:"Cable Fly (одной рукой)", s:"3×12/рука", r:"7" },
-      { id:"w6d6e5", t:"T3", n:"Spider Curl", s:"3×12", r:"7-8" },
-      { id:"w6d6e6", t:"T3", n:"OH Triceps Ext.", s:"3×12", r:"7-8" },
-      { id:"w6d6e7", t:"T3", n:"Zottman Curl (DB)", s:"2×10", r:"7" },
-    ]},
-  ]};
+  { n: 7, title: "Фокус чувств = реальность",
+    quote: "То, на чем сфокусированы наши чувства, становится реальностью в видимом мире.",
+    body: [
+      "Не мысли. Не намерения. Именно чувства, потому что чувства — язык матрицы (это разовьётся в Ключах 8–11).",
+      "Если вы 80% времени чувствуете нехватку — матрица отражает нехватку. Это не наказание; это техническая особенность зеркала.",
+    ],
+    ex: "Сегодня в течение дня поставь 3 случайных напоминания. По каждому — спроси себя: «Какое чувство я сейчас длю?» Без оценки. Просто маркеры." },
 
-  // ═══ WEEK 7 — RPE 8, 77-80% TM ══════════════════════════════════════
-  W[7] = { days: [
-    { name: "LOWER POWER", ex: [
-      { id:"w7d1e1", t:"T1", n:"Back Squat", s:"4×3", r:"8", note:"80% TM + back-off 2×5 @ 70%" },
-      { id:"w7d1e2", t:"T2", n:"Pause Squat", s:"3×4", r:"8", note:"72%" },
-      { id:"w7d1e3", t:"T3", n:"Bulgarian Split Squat", s:"4×10/ногу", r:"8" },
-      { id:"w7d1e4", t:"T3", n:"Leg Extension", s:"3×15", r:"8" },
-      { id:"w7d1e5", t:"T3", n:"Ab Wheel", s:"3×12", r:"7" },
-    ]},
-    { name: "UPPER PRESS", ex: [
-      { id:"w7d2e1", t:"T1", n:"Bench Press", s:"4×3", r:"8", note:"80% TM + back-off 2×5 @ 70%" },
-      { id:"w7d2e2", t:"T1", n:"OHP", s:"4×4", r:"8", note:"75% TM" },
-      { id:"w7d2e3", t:"T3", n:"BB Incline Press", s:"4×8", r:"8" },
-      { id:"w7d2e4", t:"T3", n:"Lateral Raise", s:"4×15", r:"7-8" },
-      { id:"w7d2e5", t:"T3", n:"Triceps Pushdown", s:"3×12", r:"8" },
-    ]},
-    { name: "LOWER HINGE", ex: [
-      { id:"w7d3e1", t:"T1", n:"Conventional Deadlift", s:"3×3", r:"8", note:"80% TM" },
-      { id:"w7d3e2", t:"T2", n:"Deficit DL", s:"3×5", r:"7-8", note:"70%" },
-      { id:"w7d3e3", t:"T3", n:"45° Back Ext. (+20кг)", s:"3×12", r:"8" },
-      { id:"w7d3e4", t:"T3", n:"Leg Curl", s:"4×12", r:"8" },
-      { id:"w7d3e5", t:"T3", n:"Hanging Leg Raise", s:"3×12", r:"7" },
-    ]},
-    { name: "UPPER PULL", ex: [
-      { id:"w7d4e1", t:"T1", n:"Pendlay Row", s:"4×4", r:"8" },
-      { id:"w7d4e2", t:"T1", n:"Weighted Pull-up (+10кг)", s:"4×4", r:"8" },
-      { id:"w7d4e3", t:"T3", n:"Chest-Supported DB Row", s:"4×10", r:"8" },
-      { id:"w7d4e4", t:"T3", n:"Face Pull", s:"3×15", r:"7" },
-      { id:"w7d4e5", t:"T3", n:"Incline DB Curl", s:"3×10", r:"8" },
-    ]},
-    { name: "LOWER VOLUME · ZERCHER", ex: [
-      { id:"w7d5e1", t:"T2", n:"Zercher Squat", s:"4×6 @ 60-65кг", r:"7", note:"Темп 3-1-1 · проверь локоть 24ч!" },
-      { id:"w7d5e2", t:"T2", n:"Zercher Technical Top Single", s:"1×1 @ 70кг", r:"7" },
-      { id:"w7d5e3", t:"T3", n:"BSS", s:"4×8/ногу", r:"8" },
-      { id:"w7d5e4", t:"T3", n:"GHR", s:"3×10", r:"8" },
-      { id:"w7d5e5", t:"T3", n:"Sled Push", s:"4×25м", r:"8" },
-    ]},
-    { name: "UPPER VOLUME + ARMS", ex: [
-      { id:"w7d6e1", t:"T1", n:"Close-Grip Bench", s:"4×5", r:"8" },
-      { id:"w7d6e2", t:"T2", n:"Seated DB OHP", s:"3×10", r:"8" },
-      { id:"w7d6e3", t:"T3", n:"Ring Dip (+вес)", s:"3×8", r:"7-8" },
-      { id:"w7d6e4", t:"T3", n:"Cable Fly", s:"3×12/рука", r:"7" },
-      { id:"w7d6e5", t:"T3", n:"Spider Curl", s:"3×12", r:"8" },
-      { id:"w7d6e6", t:"T3", n:"OH Triceps Ext.", s:"3×12", r:"8" },
-    ]},
-  ]};
+  { n: 8, title: "Недостаточно сказать. Нужно жить",
+    quote: "Чтобы воплотить в жизнь одну из квантовых вероятностей, мы должны ею жить!",
+    body: [
+      "Брейден жёстко разводит «сказать» и «быть». Аффирмации без чувства — холостой ход. Молитва-просьба укрепляет именно ту реальность, в которой просимого нет.",
+      "Цель должна перестать быть просьбой и стать состоянием.",
+    ],
+    ex: "Возьми одну свою цель. Сформулируй её сейчас одной фразой в настоящем времени, как уже свершившуюся. Заметь, какое чувство приходит, и насколько оно отличается от чувства «я хочу этого»." },
 
-  // ═══ WEEK 8 — RPE 8.5, 82-85% TM, ПИК ИНТЕНСИВНОСТИ ══════════════════
-  W[8] = { days: [
-    { name: "LOWER POWER · PEAK", ex: [
-      { id:"w8d1e1", t:"T1", n:"Back Squat", s:"4×2", r:"8.5", note:"85% TM + back-off 2×4 @ 75%" },
-      { id:"w8d1e2", t:"T2", n:"Pause Squat", s:"3×3", r:"8", note:"75%" },
-      { id:"w8d1e3", t:"T3", n:"BSS", s:"3×10/ногу", r:"8" },
-      { id:"w8d1e4", t:"T3", n:"Leg Extension", s:"3×12", r:"8" },
-      { id:"w8d1e5", t:"T3", n:"Ab Wheel", s:"3×12", r:"7" },
-    ]},
-    { name: "UPPER PRESS · PEAK", ex: [
-      { id:"w8d2e1", t:"T1", n:"Bench Press", s:"4×2", r:"8.5", note:"85% TM + back-off 2×4 @ 75%" },
-      { id:"w8d2e2", t:"T1", n:"OHP", s:"3×3", r:"8.5", note:"80% TM" },
-      { id:"w8d2e3", t:"T3", n:"BB Incline Press", s:"3×8", r:"8" },
-      { id:"w8d2e4", t:"T3", n:"Lateral Raise", s:"3×15", r:"8" },
-      { id:"w8d2e5", t:"T3", n:"Triceps Pushdown", s:"3×10", r:"8" },
-    ]},
-    { name: "LOWER HINGE · PEAK", ex: [
-      { id:"w8d3e1", t:"T1", n:"Conventional Deadlift", s:"3×2", r:"8.5", note:"83% TM · НЕ грайнд!" },
-      { id:"w8d3e2", t:"T2", n:"RDL", s:"3×6", r:"8", note:"72%" },
-      { id:"w8d3e3", t:"T3", n:"45° Back Ext.", s:"3×12", r:"8" },
-      { id:"w8d3e4", t:"T3", n:"Leg Curl", s:"3×10", r:"8" },
-      { id:"w8d3e5", t:"T3", n:"Hanging Leg Raise", s:"3×12", r:"7" },
-    ]},
-    { name: "UPPER PULL · PEAK", ex: [
-      { id:"w8d4e1", t:"T1", n:"Pendlay Row", s:"4×3", r:"8.5" },
-      { id:"w8d4e2", t:"T1", n:"Weighted Pull-up", s:"4×3", r:"8.5", note:"+12.5кг" },
-      { id:"w8d4e3", t:"T3", n:"Chest-Supported DB Row", s:"3×10", r:"8" },
-      { id:"w8d4e4", t:"T3", n:"Face Pull", s:"3×15", r:"7" },
-      { id:"w8d4e5", t:"T3", n:"Incline DB Curl", s:"3×10", r:"8" },
-    ]},
-    { name: "LOWER VOLUME · ZERCHER 80кг", ex: [
-      { id:"w8d5e1", t:"T2", n:"Zercher Squat", s:"5×3 @ 75-80кг", r:"7.5", note:"ПОТОЛОК 80кг · не тестим 1ПМ!" },
-      { id:"w8d5e2", t:"T3", n:"BSS", s:"3×10/ногу", r:"8" },
-      { id:"w8d5e3", t:"T3", n:"GHR", s:"3×10", r:"8" },
-      { id:"w8d5e4", t:"T3", n:"Sled Push", s:"4×30м", r:"8" },
-    ]},
-    { name: "UPPER VOLUME + ARMS", ex: [
-      { id:"w8d6e1", t:"T1", n:"Close-Grip Bench", s:"4×5", r:"8" },
-      { id:"w8d6e2", t:"T2", n:"Seated DB OHP", s:"3×8", r:"8" },
-      { id:"w8d6e3", t:"T3", n:"Ring Dip (+вес)", s:"3×8", r:"8" },
-      { id:"w8d6e4", t:"T3", n:"Cable Fly", s:"3×12/рука", r:"7" },
-      { id:"w8d6e5", t:"T3", n:"Spider Curl", s:"3×10", r:"8" },
-      { id:"w8d6e6", t:"T3", n:"OH Triceps Ext.", s:"3×12", r:"8" },
-      { id:"w8d6e7", t:"T3", n:"HIIT финишер (10 мин, опц)", s:"", r:"" },
-    ]},
-  ]};
+  { n: 9, title: "Чувства — язык матрицы",
+    quote: "Вы не видите наших молитв. Молитва — это чувство. — настоятель тибетского монастыря, разговор с Брейденом",
+    body: [
+      "Главный инструмент: почувствовать, что цель уже достигнута, и побыть в этом чувстве.",
+      "Не просьба «дай», а ощущение «уже есть, спасибо». Это разные сигналы для матрицы.",
+    ],
+    ex: "Открой модуль «Состояние свершения» в этом приложении. Проведи там полный цикл хотя бы один раз сегодня. Без него Ключ 9 остаётся теорией." },
 
-  // ═══ WEEK 9 — TAPER, объём −50%, интенсивность держим ════════════════
-  W[9] = { days: [
-    { name: "TAPER · SQUAT", ex: [
-      { id:"w9d1e1", t:"T1", n:"Back Squat", s:"Heavy Single", r:"8", note:"≈90% TM" },
-      { id:"w9d1e2", t:"T2", n:"Back Squat back-off", s:"2×3", r:"7", note:"75%" },
-      { id:"w9d1e3", t:"T3", n:"Stop.", s:"Ничего больше.", r:"" },
-    ]},
-    { name: "TAPER · BENCH + OHP", ex: [
-      { id:"w9d2e1", t:"T1", n:"Bench Press", s:"Heavy Single", r:"8", note:"≈90% TM" },
-      { id:"w9d2e2", t:"T2", n:"Bench back-off", s:"2×3", r:"7", note:"75%" },
-      { id:"w9d2e3", t:"T2", n:"OHP", s:"3×3", r:"7-8", note:"75%" },
-    ]},
-    { name: "TAPER · DEADLIFT", ex: [
-      { id:"w9d3e1", t:"T1", n:"Conventional DL", s:"Heavy Single", r:"8", note:"≈90% TM" },
-      { id:"w9d3e2", t:"T2", n:"Deadlift back-off", s:"2×2", r:"7", note:"75%" },
-      { id:"w9d3e3", t:"T3", n:"RDL (light)", s:"2×6", r:"6" },
-    ]},
-    { name: "TAPER · UPPER PULL", ex: [
-      { id:"w9d4e1", t:"T2", n:"Bench Technique", s:"2×3", r:"7-8", note:"80%" },
-      { id:"w9d4e2", t:"T2", n:"Pendlay Row", s:"3×5", r:"7" },
-      { id:"w9d4e3", t:"T3", n:"Pull-up", s:"3×3", r:"7", note:"БЕЗ AMRAP" },
-    ]},
-    { name: "REST · ZONE 2", ex: [
-      { id:"w9d5e1", t:"T3", n:"C2 Row Z2 20 мин", s:"лёгкий темп", r:"5" },
-      { id:"w9d5e2", t:"T3", n:"Мобильность 15 мин", s:"", r:"" },
-      { id:"w9d5e3", t:"T3", n:"БЕЗ Zercher на этой неделе!", s:"", r:"" },
-    ]},
-    { name: "TECHNICAL · ВСЕ ЛИФТЫ", ex: [
-      { id:"w9d6e1", t:"T3", n:"Squat 2×3 @ 70%", s:"техника, лёгко", r:"6" },
-      { id:"w9d6e2", t:"T3", n:"Bench 2×3 @ 70%", s:"техника", r:"6" },
-      { id:"w9d6e3", t:"T3", n:"OHP 2×3 @ 70%", s:"техника", r:"6" },
-      { id:"w9d6e4", t:"T3", n:"Pull-up 2×3", s:"BW", r:"6" },
-    ]},
-  ]};
+  { n: 10, title: "Не всякое чувство работает",
+    quote: "За пределами представлений о правильном и неправильном действии находится поле. Встретимся там. — Руми",
+    body: [
+      "Чувство, продиктованное эго и привязанностью к результату («Господи, пусть он выздоровеет, иначе я не выдержу»), укрепляет дистанцию между «есть» и «надо».",
+      "Работает чувство без оценочных суждений. Брейден называет это «состраданием как творящей силой».",
+    ],
+    ex: "Возьми ту же цель из Ключа 8. Спроси: «Что я почувствую, если это никогда не произойдёт?» Если отвечается «жизнь рухнет» — у тебя чистая привязанность. Это не плохо, но это рабочая информация." },
 
-  // ═══ WEEK 10 — TEST 1RM ═══════════════════════════════════════════════
-  W[10] = { days: [
-    { name: "ТЕСТ · SQUAT 1ПМ", ex: [
-      { id:"w10d1e1", t:"T1", n:"Разминка: bike 10мин + динамика", s:"", r:"" },
-      { id:"w10d1e2", t:"T1", n:"Bar×8 → 40%×5 → 60%×3 → 75%×2", s:"", r:"6" },
-      { id:"w10d1e3", t:"T1", n:"85%×1 → 92%×1 → Opener 100% TM", s:"1×1", r:"8" },
-      { id:"w10d1e4", t:"T1", n:"+2.5кг attempt", s:"1×1", r:"8.5" },
-      { id:"w10d1e5", t:"T1", n:"🔥 +2.5кг NEW 1ПМ", s:"1×1", r:"9" },
-      { id:"w10d1e6", t:"T3", n:"GHD 2×10 (light cooldown)", s:"", r:"5" },
-    ]},
-    { name: "ПОЛНЫЙ ОТДЫХ", ex: [
-      { id:"w10d2e1", t:"T3", n:"КРИТИЧНО для CNS", s:"", r:"" },
-      { id:"w10d2e2", t:"T3", n:"Прогулка 30 мин · еда · сон", s:"", r:"" },
-    ]},
-    { name: "ТЕСТ · BENCH 1ПМ", ex: [
-      { id:"w10d3e1", t:"T1", n:"Разминка: band pull-apart + bar", s:"", r:"" },
-      { id:"w10d3e2", t:"T1", n:"Bar → 40%×5 → 60%×3 → 75%×2", s:"", r:"6" },
-      { id:"w10d3e3", t:"T1", n:"85%×1 → 92%×1 → Opener 100%", s:"1×1", r:"8" },
-      { id:"w10d3e4", t:"T1", n:"+2.5кг attempt", s:"1×1", r:"8.5" },
-      { id:"w10d3e5", t:"T1", n:"🔥 +2.5кг NEW 1ПМ", s:"1×1", r:"9" },
-      { id:"w10d3e6", t:"T3", n:"Pendlay Row (light)", s:"3×5 @ 60%", r:"6" },
-    ]},
-    { name: "ACTIVE RECOVERY", ex: [
-      { id:"w10d4e1", t:"T3", n:"C2 Row Z2 20 мин", s:"", r:"5" },
-      { id:"w10d4e2", t:"T3", n:"Мобильность", s:"", r:"" },
-    ]},
-    { name: "ТЕСТ · DEADLIFT 1ПМ", ex: [
-      { id:"w10d5e1", t:"T1", n:"Разминка: hip mobility + BW GM", s:"", r:"" },
-      { id:"w10d5e2", t:"T1", n:"40%×5 → 60%×3 → 75%×2", s:"", r:"6" },
-      { id:"w10d5e3", t:"T1", n:"85%×1 → 92%×1 → Opener 100%", s:"1×1", r:"8" },
-      { id:"w10d5e4", t:"T1", n:"+5кг attempt", s:"1×1", r:"8.5" },
-      { id:"w10d5e5", t:"T1", n:"🔥 +5кг NEW 1ПМ", s:"1×1", r:"9" },
-    ]},
-    { name: "ТЕСТ · OHP + ZERCHER", ex: [
-      { id:"w10d6e1", t:"T1", n:"OHP: 40%×5 → 60%×3 → 75%×2", s:"", r:"6" },
-      { id:"w10d6e2", t:"T1", n:"OHP 85%→92%→Opener→+2.5 NEW 1ПМ", s:"singles", r:"9" },
-      { id:"w10d6e3", t:"T2", n:"Zercher Technical Top", s:"1×1 @ 85-90кг", r:"8", note:"Working max, НЕ 1ПМ!" },
-      { id:"w10d6e4", t:"T3", n:"Pull-up AMRAP BW", s:"1×max", r:"10", note:"Для метрики" },
-    ]},
-  ]};
+  { n: 11, title: "Стать тем опытом",
+    quote: "Мы должны стать тем опытом, который хотим получить.",
+    body: [
+      "Эксперименты с молитвой о мире: эффект работал, пока молитва длилась, и пропадал, когда она прекращалась. Вывод Брейдена: реальность держится на длительности состояния.",
+      "Не «сделать», а «быть» — постоянно, пока это перестанет быть упражнением.",
+    ],
+    ex: "Сформулируй одну фразу: «Я — человек, который ___». Эта фраза должна быть таким же фактом, как «у меня тёмные волосы». Если ещё не такая — над чем именно нужно работать?" },
 
-  return W;
-}
+  { n: 12, title: "Не ограничены законами физики",
+    quote: "Мы не ограничены законами физики, известными на сегодняшний день.",
+    body: [
+      "Брейден приводит истории мистиков (св. Франциск из Паолы, Мария де Агреда, Падре Пио) о пребывании в двух местах одновременно.",
+      "Не нужно в это верить. Достаточно взять рабочую установку: ваш потолок — не физика, а ваше представление о себе.",
+    ],
+    ex: "Запиши три «невозможных для меня» вещи. Не «я хочу», а именно «это невозможно для меня». Не борись с этим списком — просто посмотри на него." },
 
-const PROG = buildProgram();
+  { n: 13, title: "Каждый фрагмент содержит целое",
+    quote: "Каждый фрагмент голографического объекта содержит в себе весь объект.",
+    body: [
+      "Голограмма: разрежь пополам — получишь две полные голограммы, не две половинки.",
+      "Прикладной вывод: любая ваша черта (страх, радость, отношение, выбор) присутствует во всём, что вы делаете. Невозможно быть собранным на работе и сломанным дома — это одно поле.",
+    ],
+    ex: "Найди одну черту, которая проявляется и в работе, и в близких отношениях, и в одиночестве. Это твой голографический паттерн. Заметь его — пока без вмешательства." },
 
-// ═══ REST DAY (Sunday only) ════════════════════════════════════════════════
-const REST_EX = [
-  { id: "r1", n: "Планка фронтальная", s: "3×30-60 сек" },
-  { id: "r2", n: "Подъёмы ног лёжа", s: "3×15" },
-  { id: "r3", n: "Боковая планка", s: "2×30 сек/сторона" },
-  { id: "r4", n: "Мобильность плеч/бёдер", s: "10 мин" },
-  { id: "r5", n: "Прогулка на воздухе", s: "30-40 мин" },
-  { id: "r6", n: "Растяжка всего тела", s: "10 мин" },
+  { n: 14, title: "Молитвы достигают цели мгновенно",
+    quote: "Подключенная ко всему сущему голограмма сознания гарантирует, что наши молитвы достигают цели в тот самый момент, когда мы их творим.",
+    body: [
+      "Никакой задержки нет. «Когда я отправлю» = «когда сделаю». Время не участвует.",
+      "Если кажется, что «не дошло» — проверь не задержку, а сигнал (Ключи 9–11).",
+    ],
+    ex: "Подумай о ком-то, кому хочешь добра. Удерживай чувство 30 секунд. Не «отправляй» — это произошло уже. Заметь, нужно ли тебе подтверждение «дошло». Если да — это привязанность." },
+
+  { n: 15, title: "Мельчайшее изменение меняет всё",
+    quote: "Самое незначительное изменение в нашей жизни благодаря голограмме сознания отражается на всем окружающем мире.",
+    body: [
+      "Эффект бабочки в личном масштабе. Один сдвиг внутри = пересборка внешнего.",
+      "Это снимает требование «делать большие шаги». Ставка на минимальный, но устойчивый сдвиг.",
+    ],
+    ex: "Выбери ОДНО микро-изменение, которое сможешь делать ежедневно (одно слово, один жест, одна реакция). Не два. Одно. Запиши его в журнал." },
+
+  { n: 16, title: "Достаточно 1% (или √1%)",
+    quote: "Чтобы запустить процесс перемен в обществе, достаточно 1% населения.",
+    body: [
+      "Брейден ссылается на исследования: квадратный корень из 1% участников коллективной медитации даёт измеряемый эффект.",
+      "Личный вывод: тебе не нужно «уговорить всех». Достаточно, чтобы рядом тобой устойчиво держалось состояние, и среда подтянется.",
+    ],
+    ex: "Не пытайся никого убеждать сегодня. Просто удерживай своё состояние. Заметь, кто на это среагирует первым." },
+
+  { n: 17, title: "Зеркало внешнего мира",
+    quote: "Божественная матрица служит зеркалом наших чувств. Отражаясь в этом зеркале, они воплощаются в окружающем нас мире.",
+    body: [
+      "История Брейдена: напряжение в паре → взорвавшийся кран, лопнувший радиатор, прорванный обогреватель. Внешние «случайности» = внутренние состояния.",
+      "Журнал «Эхо» в этом приложении — для этого Ключа.",
+    ],
+    ex: "Вспомни последние три «странных совпадения» за неделю. Запиши их в Эхо. Не интерпретируй. Просто зафиксируй." },
+
+  { n: 18, title: "Три базовых страха",
+    quote: "Все негативные переживания сводятся к трём паттернам: страху одиночества, страху низкой самооценки, страху принять и довериться.",
+    body: [
+      "Страх одиночества: «покидаемый/покидающий», бегство до того как бросят.",
+      "Страх «я недостаточно хорош»: «но…», «это ступенька к чему-то большему», самообесценивание.",
+      "Страх принять и довериться: тотальная подозрительность, контроль.",
+      "Любая боль раскладывается на эти три паттерна или их комбинацию.",
+    ],
+    ex: "Открой модуль «Страхи». Поставь сегодня себе три оценки 0–10. Без анализа. Через неделю сравнишь динамику." },
+
+  { n: 19, title: "Отношения — отражения убеждений",
+    quote: "Отношения, которые мы строим с другими людьми, являются отражениями наших убеждений.",
+    body: [
+      "Каждая повторяющаяся ситуация в отношениях — это зеркало. У Брейдена их пять: настоящего момента, оценочных суждений, потерянного, Тёмной ночи души, совершенства.",
+      "Модуль «Зеркало» в этом приложении проводит через все пять.",
+    ],
+    ex: "Возьми одну ситуацию из последних 7 дней, которая «зацепила». Открой «Зеркало» и пройди все 5 вопросов. Хотя бы пары точно отзовутся." },
+
+  { n: 20, title: "Стать воплощением",
+    quote: "Мы должны стать воплощением того, что хотим обрести в окружающем мире.",
+    body: [
+      "Финальный синтез всей книги. Если всё, что снаружи — отражение внутреннего, то единственная рабочая стратегия: быть тем, что хочешь видеть.",
+      "Не «делать что-то для», а «быть» — пока это не перестанет быть позой и станет идентичностью.",
+    ],
+    ex: "Запиши одну цель в форме «Я — человек, который ___». Эта фраза перейдёт в ежедневный модуль «Состояние свершения» как идентичность-якорь. Дальше — повторение до тех пор, пока не станет нормой." },
 ];
 
-// ═══ ICONS ═══════════════════════════════════════════════════════════════════
+// ═══ 5 MIRRORS (Глава 7) ════════════════════════════════════════════════════
+const MIRRORS = [
+  { n: 1, name: "Настоящего момента",
+    q: "Что в этом человеке/ситуации зеркалит мне меня прямо сейчас?",
+    hint: "Самый простой уровень. Какое моё качество (любое, не обязательно «плохое») они проявляют?" },
+  { n: 2, name: "Критических оценок",
+    q: "Какие мои критические суждения они отражают?",
+    hint: "Брейден: люди, обманувшие его, отзеркалили не его обман, а его собственное непримиримое осуждение «честность/доверие/искажения». Что я в них яростно осуждаю?" },
+  { n: 3, name: "Потерянного",
+    q: "Что в этом человеке отражает то, что я в себе потерял, отдал или у меня отобрали?",
+    hint: "Магнетическое притяжение к незнакомцам, «он/она такой свободный/честный/живой» — это про меня самого, утраченные части. Что именно?" },
+  { n: 4, name: "Тёмной ночи души",
+    q: "Не обнажает ли эта ситуация мой самый глубокий страх?",
+    hint: "Внезапный кризис, когда «всё рушится без причины» — это не наказание, а вскрытие базового страха (одиночества / самооценки / доверия). Какого?" },
+  { n: 5, name: "Совершенства",
+    q: "С каким иллюзорным эталоном я себя сравниваю в этой ситуации?",
+    hint: "Брейден: «несовершенство» = сравнение с почерпнутым извне идеалом. Если убрать эталон — что останется? Это уже совершенство." },
+];
+
+// ═══ 3 BASE FEARS (Ключ 18) ═════════════════════════════════════════════════
+const FEARS = [
+  { id: "loneliness", name: "Одиночество", short: "Одинок.",
+    desc: "Страх быть покинутым. Брейден: «покидаемый или покидающий».",
+    patterns: [
+      "Часто ли ты последним узнаёшь о собственных неприятностях",
+      "Бывало, что вполне благополучный брак/работа разваливались «без видимых причин»",
+      "Уходишь сам, пока всё хорошо («лучше я уйду, пока не случилось»)",
+      "Не строишь долгосрочные связи, всё «временно»",
+      "Чувствуешь внутреннее опустошение, когда близкий уезжает на день",
+    ] },
+  { id: "worth", name: "Низкая самооценка", short: "Самооц.",
+    desc: "«Я недостаточно хорош». Любое «но» в формулировке желания — отсюда.",
+    patterns: [
+      "Часто говоришь себе «на данный момент неплохо и так»",
+      "В формулировке желаний часто звучит «но…»",
+      "«Это ступенька к чему-то большему» — чтобы не признавать, что хочешь сразу всё",
+      "Сравниваешь себя с другими в фоне, почти не замечая",
+      "При успехе ловишь чувство «мне не положено» или «я не заслужил»",
+    ] },
+  { id: "trust", name: "Принять и довериться", short: "Довер.",
+    desc: "Тотальная подозрительность к миру. Контроль вместо разрешения.",
+    patterns: [
+      "Когда дети/близкие уходят утром — внутренне напрягаешься «как бы что не случилось»",
+      "Не можешь довериться никому до конца",
+      "Контролируешь людей, проверяешь, перепроверяешь",
+      "Веришь, что мир — «страшное место» (по вечерним новостям)",
+      "Тяжело принимать помощь, подарки, любовь — «там подвох»",
+    ] },
+];
+
+// ═══ ICONS ══════════════════════════════════════════════════════════════════
 const Icon = ({ name, size = 20, color = "currentColor", stroke = 2 }) => {
   const paths = {
     back: <><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></>,
-    calendar: <><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></>,
     check: <polyline points="20 6 9 17 4 12"/>,
     chevron: <polyline points="9 18 15 12 9 6"/>,
+    plus: <><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></>,
+    settings: <><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></>,
+    lock: <><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></>,
+    play: <polygon points="5 3 19 12 5 21 5 3"/>,
+    pause: <><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></>,
+    mirror: <><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3v18"/></>,
+    eye: <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></>,
+    flame: <path d="M8.5 14.5A2.5 2.5 0 0 0 11 17a2.5 2.5 0 0 0 2.5-2.5c0-1.5-1-2.5-1.5-3.5-.5-1-.5-2 .5-3 1 1 4 2 4 5.5a4.5 4.5 0 0 1-9 0c0-2 1-4.5 4-6 0 1.5.5 2.5 1 3.5z"/>,
+    download: <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></>,
+    upload: <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></>,
+    trash: <><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></>,
   };
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round" style={{display:"block"}}>
@@ -598,377 +340,409 @@ const Icon = ({ name, size = 20, color = "currentColor", stroke = 2 }) => {
   );
 };
 
-// ═══ APP ═════════════════════════════════════════════════════════════════════
+// ═══ COMMON UI ═══════════════════════════════════════════════════════════════
+const sc = { minHeight: "100vh", background: C.bg, color: C.text };
+
+function TopBar({ onBack, title, right }) {
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", justifyContent: "space-between",
+      padding: `${SP.lg}px ${SP.xl}px`, borderBottom: `1px solid ${C.borderSoft}`
+    }}>
+      <button onClick={onBack} style={{
+        width: 40, height: 40, display: "flex", alignItems: "center", justifyContent: "center",
+        marginLeft: -8
+      }}>
+        <Icon name="back" size={22} color={C.text}/>
+      </button>
+      {title && <div style={{fontSize: 12, fontWeight: 800, letterSpacing: 1.5, color: C.text, textTransform: "uppercase"}}>{title}</div>}
+      <div style={{width: 40}}>{right}</div>
+    </div>
+  );
+}
+
+function Btn({ onClick, children, variant = "primary", disabled, full, style }) {
+  const v = {
+    primary: { bg: C.text, fg: C.bg },
+    accent:  { bg: C.accent, fg: "#FFFFFF" },
+    ghost:   { bg: "transparent", fg: C.text, border: `1.5px solid ${C.text}` },
+    soft:    { bg: C.accentSoft, fg: C.accent },
+  }[variant];
+  return (
+    <button onClick={onClick} disabled={disabled} style={{
+      background: v.bg, color: v.fg, padding: "14px 22px",
+      fontSize: 14, fontWeight: 800, letterSpacing: 0.5, textTransform: "uppercase",
+      borderRadius: 10, border: v.border || "none",
+      width: full ? "100%" : "auto",
+      opacity: disabled ? 0.4 : 1,
+      transition: "opacity .15s",
+      ...style,
+    }}>
+      {children}
+    </button>
+  );
+}
+
+function ProgressBar({ value, max, color = C.accent }) {
+  const pct = max > 0 ? (value/max)*100 : 0;
+  return (
+    <div style={{height: 3, background: C.border, borderRadius: 2, overflow: "hidden"}}>
+      <div style={{height: "100%", width: `${pct}%`, background: color, transition: "width .4s"}}/>
+    </div>
+  );
+}
+
+// ═══ INITIAL STATE ═══════════════════════════════════════════════════════════
+function defaultState() {
+  return {
+    v: 1,
+    acceptedAt: null,
+    startDate: null,
+    goals: [],
+    curriculum: {},
+    completion: [],
+    mirrors: [],
+    fears: { current: { loneliness: 5, worth: 5, trust: 5 }, history: [] },
+    echoes: [],
+  };
+}
+
+// ═══ DISCLAIMER ══════════════════════════════════════════════════════════════
+function Disclaimer({ onAccept }) {
+  const [checked, setChecked] = useState(false);
+  return (
+    <div style={{...sc, padding: `${SP.x4}px ${SP.xl}px`}}>
+      <div style={{maxWidth: 480, margin: "0 auto"}}>
+        <h1 className="tbig" style={{fontSize: 44, marginBottom: SP.lg, color: C.text}}>МАТРИЦА</h1>
+        <div style={{fontSize: 11, fontWeight: 800, letterSpacing: 2, color: C.accent, marginBottom: SP.xxl}}>
+          ПРЕЖДЕ ЧЕМ НАЧАТЬ
+        </div>
+
+        <div className="body-text" style={{fontSize: 14, color: C.text}}>
+          <p>Это приложение построено на книге Грегга Брейдена «Божественная матрица». Книга — <b>псевдонаучная интерпретация</b> квантовой механики, не сама квантовая механика.</p>
+          <p>Реальная физика не утверждает, что сознание материализует желания. «Эффект наблюдателя» — про физическое взаимодействие при измерении, не про человеческие намерения. Эксперименты, на которые ссылается Брейден (Бакстер с ДНК, «1%-эффект»), либо не воспроизведены, либо переинтерпретированы.</p>
+          <p style={{color: C.accent, fontWeight: 700}}>Тем не менее, структурированная практика, заложенная в книге, работает. Не потому что «материализует поле», а по психологическим причинам:</p>
+          <p>— ежедневное наблюдение за убеждениями и эмоциями повышает метакогнитивную осознанность;<br/>— практика «состояния свершения» — это форма позитивной самовизуализации с эмоциональной регуляцией;<br/>— аудит проекций в отношениях вскрывает неосознанные паттерны;<br/>— работа с базовыми страхами (одиночество / самооценка / доверие) — это стандартная схизо-аналитическая рамка.</p>
+          <p>Внешние результаты приходят не от «матрицы», а от того, что меняется поведение. Используй приложение как инструмент работы с собственной психикой, а не как магический.</p>
+        </div>
+
+        <label style={{
+          display: "flex", alignItems: "flex-start", gap: SP.md,
+          marginTop: SP.xxl, padding: SP.md,
+          background: checked ? C.accentSoft : C.card,
+          borderRadius: 10, cursor: "pointer",
+          border: `1.5px solid ${checked ? C.accent : C.border}`,
+          transition: "all .15s",
+        }}>
+          <input type="checkbox" checked={checked} onChange={e => setChecked(e.target.checked)}
+            style={{marginTop: 2, accentColor: C.accent, width: 18, height: 18}}/>
+          <span style={{fontSize: 13, color: C.text, lineHeight: 1.5}}>
+            Понял, что это духовно-психологическая практика, а не научный метод. Использую как структуру для работы с собой.
+          </span>
+        </label>
+
+        <div style={{marginTop: SP.xl}}>
+          <Btn onClick={onAccept} disabled={!checked} variant="primary" full>
+            Продолжить
+          </Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══ GOALS SETUP ═════════════════════════════════════════════════════════════
+function GoalsSetup({ onSave }) {
+  const [items, setItems] = useState([
+    { id: uid(), text: "", identity: "" },
+  ]);
+  const update = (id, k, v) => setItems(items.map(it => it.id === id ? {...it, [k]: v} : it));
+  const add = () => items.length < 3 && setItems([...items, { id: uid(), text: "", identity: "" }]);
+  const remove = (id) => setItems(items.filter(it => it.id !== id));
+  const valid = items.some(it => it.text.trim() && it.identity.trim());
+
+  return (
+    <div style={{...sc, padding: `${SP.xxl}px ${SP.xl}px`}}>
+      <div style={{maxWidth: 480, margin: "0 auto"}}>
+        <h1 className="tbig" style={{fontSize: 36, marginBottom: SP.sm}}>ЦЕЛИ</h1>
+        <div style={{fontSize: 13, color: C.textDim, marginBottom: SP.xl, lineHeight: 1.5}}>
+          1–3 цели в формате «состояния свершения». Не «хочу X», а «у меня есть X» + «я — человек, который ___».
+          Цели можно изменить позже.
+        </div>
+
+        {items.map((it, i) => (
+          <div key={it.id} style={{
+            background: C.card, borderRadius: 12, padding: SP.lg,
+            marginBottom: SP.md, border: `1px solid ${C.border}`,
+          }}>
+            <div style={{display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: SP.md}}>
+              <div style={{fontSize: 11, fontWeight: 800, letterSpacing: 1.5, color: C.accent}}>
+                ЦЕЛЬ {i+1}
+              </div>
+              {items.length > 1 && (
+                <button onClick={() => remove(it.id)} style={{color: C.textSoft, fontSize: 12}}>
+                  убрать
+                </button>
+              )}
+            </div>
+            <div style={{fontSize: 11, color: C.textDim, marginBottom: 4, fontWeight: 700, letterSpacing: 0.5, textTransform: "uppercase"}}>
+              Что (в настоящем времени)
+            </div>
+            <textarea
+              value={it.text}
+              onChange={e => update(it.id, "text", e.target.value)}
+              placeholder="Например: у меня есть проект, который я веду каждый день..."
+              rows={2}
+              style={{
+                width: "100%", padding: SP.sm, marginBottom: SP.md,
+                border: `1px solid ${C.border}`, borderRadius: 6,
+                fontSize: 14, background: C.bg, outline: "none",
+              }}
+            />
+            <div style={{fontSize: 11, color: C.textDim, marginBottom: 4, fontWeight: 700, letterSpacing: 0.5, textTransform: "uppercase"}}>
+              Я — человек, который…
+            </div>
+            <textarea
+              value={it.identity}
+              onChange={e => update(it.id, "identity", e.target.value)}
+              placeholder="…спокоен, последователен, доводит начатое до конца"
+              rows={2}
+              style={{
+                width: "100%", padding: SP.sm,
+                border: `1px solid ${C.border}`, borderRadius: 6,
+                fontSize: 14, background: C.bg, outline: "none",
+              }}
+            />
+          </div>
+        ))}
+
+        {items.length < 3 && (
+          <button onClick={add} style={{
+            width: "100%", padding: SP.md,
+            border: `1.5px dashed ${C.border}`, borderRadius: 10,
+            color: C.textDim, fontSize: 13, fontWeight: 700,
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+            marginBottom: SP.xl,
+          }}>
+            <Icon name="plus" size={16} color={C.textDim}/>
+            ещё цель
+          </button>
+        )}
+
+        <Btn
+          onClick={() => onSave(items.filter(it => it.text.trim() && it.identity.trim()))}
+          disabled={!valid} variant="accent" full
+        >
+          Начать протокол
+        </Btn>
+      </div>
+    </div>
+  );
+}
+
+// ═══ MAIN APP ════════════════════════════════════════════════════════════════
 function App() {
-  const [state, setState] = useState(() => {
-    const s = storage.get("ironv4");
-    return {
-      startDate: s?.startDate || null,
-      completed: s?.completed || {},
-      weights: s?.weights || {},
-      rest: s?.rest || {},
-    };
-  });
-  const [view, setView] = useState("home");
-  const [selW, setSelW] = useState(null);
-  const [selD, setSelD] = useState(null);
+  const [state, setState] = useState(() => storage.get() || defaultState());
+  const [view, setView] = useState({ name: "home" });
 
-  const save = (s) => { setState(s); storage.set("ironv4", s); };
-  const toggle = (id) => save({...state, completed: {...state.completed, [id]: !state.completed[id]}});
-  const toggleRest = (k, id) => { const d = state.rest[k] || {}; save({...state, rest: {...state.rest, [k]: {...d, [id]: !d[id]}}}); };
-  const setW = (id, v) => save({...state, weights: {...state.weights, [id]: v}});
+  const save = (s) => { setState(s); storage.set(s); };
 
-  if (!state.startDate) {
-    return <Start onStart={(d) => save({...state, startDate: d})} />;
+  // ─── Onboarding ───
+  if (!state.acceptedAt) {
+    return <Disclaimer onAccept={() => save({...state, acceptedAt: new Date().toISOString()})}/>;
+  }
+  if (state.goals.length === 0) {
+    return <GoalsSetup onSave={(goals) => save({...state, goals, startDate: new Date().toISOString()})}/>;
   }
 
-  const now = new Date();
-  const start = new Date(state.startDate);
-  const daysSince = Math.floor((now - start) / 86400000);
-  const curWeek = Math.min(10, Math.max(1, Math.floor(daysSince/7) + 1));
-  const dayOfWeek = now.getDay(); // 0=Sun, 1=Mon ... 6=Sat
+  // ─── Derived ───
+  const completedKeys = Object.keys(state.curriculum).map(Number).sort((a,b)=>a-b);
+  const lastCompleted = completedKeys.length > 0 ? Math.max(...completedKeys) : 0;
+  const currentKey = Math.min(20, lastCompleted + 1);
+  const phaseKey = phaseOf(currentKey);
+  const totalDone = completedKeys.length;
+  const startDate = new Date(state.startDate);
+  const daysSince = Math.floor((Date.now() - startDate) / 86400000) + 1;
 
-  // Training days = Mon-Sat (dayOfWeek 1-6) → slot 0-5
-  // Sunday (0) = rest
-  const isTrainingToday = dayOfWeek >= 1 && dayOfWeek <= 6;
-  const isRestToday = dayOfWeek === 0;
-  const todayDayIdx = isTrainingToday ? dayOfWeek - 1 : null;
+  const todayCompletions = state.completion.filter(c => c.dateISO === todayISO());
+  const todayMirrors = state.mirrors.filter(m => m.dateISO === todayISO());
+  const todayEchoes = state.echoes.filter(e => e.dateISO === todayISO());
 
-  const allEx = Object.values(PROG).flatMap(w => w.days.flatMap(d => d.ex));
-  const totalDone = Object.values(state.completed).filter(Boolean).length;
+  // ─── Mutators ───
+  const completeKey = (n, note) => {
+    const next = {...state, curriculum: {...state.curriculum, [n]: { completedAt: new Date().toISOString(), note: note || "" }}};
+    save(next);
+  };
+  const addCompletion = (entry) => save({...state, completion: [{...entry, id: uid(), dateISO: todayISO()}, ...state.completion]});
+  const addMirror = (entry) => save({...state, mirrors: [{...entry, id: uid(), dateISO: todayISO()}, ...state.mirrors]});
+  const addEcho = (entry) => save({...state, echoes: [{...entry, id: uid(), dateISO: todayISO()}, ...state.echoes]});
+  const setFear = (id, score) => {
+    const cur = {...state.fears.current, [id]: score};
+    const hist = [...state.fears.history, { id: uid(), dateISO: todayISO(), fear: id, score }];
+    save({...state, fears: { current: cur, history: hist }});
+  };
 
-  // ═══ EXERCISE DAY VIEW ══════════════════════════════════════════════════
-  if (view === "day" && selW !== null && selD !== null) {
-    const wd = PROG[selW].days[selD];
-    const ph = getPhase(selW);
-    const doneCount = wd.ex.filter(e => state.completed[e.id]).length;
-    const allDone = doneCount === wd.ex.length;
-    const dowForSlot = SLOT_TO_DOW[selD];
+  // ─── Routes ───
+
+  // ─── Home ───
+  if (view.name === "home") {
+    const today = new Date();
+    const todayStr = `${today.getDate()} ${MONTHS_RU[today.getMonth()]} ${today.getFullYear()}`;
 
     return (
       <div style={sc}>
-        <TopBar onBack={() => setView("home")}/>
-
-        <div style={{padding:`${SP.xl}px ${SP.xl}px 0`}}>
-          <h1 className="tbig" style={{
-            fontSize: 52,
-            color: C.text,
-            margin: 0,
-            textTransform: "uppercase",
-            lineHeight: 0.9
-          }}>
-            {DAY_NAMES_FULL[dowForSlot]}
-          </h1>
-          <div style={{
-            fontSize: 13,
-            color: C.textDim,
-            marginTop: SP.sm,
-            fontWeight: 500,
-            letterSpacing: 0.2
-          }}>
-            W{selW} · {ph.short} · <span style={{color: C.accent, fontWeight: 700}}>{wd.name}</span>
-          </div>
-
-          <div style={{marginTop: SP.lg, display: "flex", alignItems: "center", gap: SP.md}}>
-            <div style={{flex: 1, height: 3, background: C.border, borderRadius: 2, overflow: "hidden"}}>
-              <div style={{
-                height: "100%",
-                width: `${(doneCount/wd.ex.length)*100}%`,
-                background: allDone ? C.text : C.accent,
-                transition: "width .4s"
-              }}/>
-            </div>
-            <div style={{
-              fontSize: 13,
-              color: C.textDim,
-              fontWeight: 700,
-              fontVariantNumeric: "tabular-nums",
-              minWidth: 40,
-              textAlign: "right"
-            }}>
-              {doneCount}/{wd.ex.length}
+        <div style={{padding: `${SP.xl}px ${SP.xl}px ${SP.lg}px`, display: "flex", justifyContent: "space-between", alignItems: "flex-start"}}>
+          <div style={{flex: 1, minWidth: 0}}>
+            <h1 className="tbig" style={{fontSize: 52, color: C.text, margin: 0, textTransform: "uppercase", lineHeight: 0.85}}>
+              МАТРИЦА
+            </h1>
+            <div style={{fontSize: 13, color: C.textDim, marginTop: SP.md, fontWeight: 500}}>
+              {todayStr} · день {daysSince} · <span style={{color: C.accent, fontWeight: 700}}>{phaseKey.short}</span>
             </div>
           </div>
-
-          {allDone && (
-            <div style={{
-              marginTop: SP.md,
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-              padding: "5px 10px",
-              background: C.text,
-              color: C.bg,
-              fontSize: 10,
-              fontWeight: 800,
-              letterSpacing: 1.5,
-              textTransform: "uppercase"
-            }}>
-              <Icon name="check" size={12} color={C.bg} stroke={3}/>
-              ВЫПОЛНЕНО
-            </div>
-          )}
+          <button onClick={() => setView({name: "settings"})} style={{
+            width: 40, height: 40, borderRadius: 10, background: C.text,
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            <Icon name="settings" size={18} color={C.bg} stroke={1.7}/>
+          </button>
         </div>
 
-        <div style={{padding: `${SP.xl}px ${SP.xl}px ${SP.xxxl}px`, display: "flex", flexDirection: "column", gap: SP.xs}}>
-          {wd.ex.map(ex => {
-            const d = state.completed[ex.id];
-            return (
-              <div key={ex.id} style={{
-                display: "flex",
-                alignItems: "flex-start",
-                gap: SP.md,
-                padding: `${SP.md}px 0`,
-                borderBottom: `1px solid ${C.border}`,
-                opacity: d ? 0.4 : 1,
-                transition: "opacity .2s"
-              }}>
-                <button onClick={() => toggle(ex.id)} style={{
-                  width: 22, height: 22, minWidth: 22,
-                  border: `1.5px solid ${d ? C.text : C.textDim}`,
-                  background: d ? C.text : "transparent",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  marginTop: 4, flexShrink: 0,
-                  borderRadius: 3,
-                  transition: "all .15s"
-                }}>
-                  {d && <Icon name="check" size={12} color={C.bg} stroke={3}/>}
-                </button>
-                <div style={{flex: 1, minWidth: 0}}>
-                  <div style={{
-                    fontSize: 15,
-                    fontWeight: 700,
-                    color: C.text,
-                    lineHeight: 1.3,
-                    textDecoration: d ? "line-through" : "none",
-                    textDecorationColor: C.accent,
-                    textDecorationThickness: "2px"
-                  }}>
-                    {ex.n}
-                  </div>
-                  <div style={{
-                    display: "flex",
-                    gap: SP.md,
-                    marginTop: 4,
-                    fontSize: 12,
-                    color: C.textDim,
-                    fontVariantNumeric: "tabular-nums",
-                    flexWrap: "wrap"
-                  }}>
-                    {ex.t && <span style={{fontWeight: 800, color: ex.t === "T1" ? C.text : C.textDim, letterSpacing: 0.5}}>{ex.t}</span>}
-                    {ex.s && <span style={{fontWeight: 600}}>{ex.s}</span>}
-                    {ex.r && <span>RPE {ex.r}</span>}
-                  </div>
-                  {ex.note && (
-                    <div style={{
-                      fontSize: 11,
-                      color: C.accent,
-                      marginTop: 4,
-                      fontWeight: 700,
-                      fontStyle: "italic"
-                    }}>
-                      → {ex.note}
-                    </div>
-                  )}
-                  <div style={{display: "flex", alignItems: "center", gap: 6, marginTop: 8}}>
-                    <span style={{fontSize: 10, color: C.textSoft, fontWeight: 600, textTransform: "uppercase", letterSpacing: 1}}>Вес</span>
-                    <input
-                      type="number"
-                      inputMode="decimal"
-                      value={state.weights[ex.id] || ""}
-                      onChange={e => setW(ex.id, e.target.value)}
-                      placeholder="—"
-                      style={{
-                        width: 60,
-                        background: "transparent",
-                        border: "none",
-                        borderBottom: `1.5px solid ${C.border}`,
-                        color: C.text,
-                        padding: "3px 4px",
-                        fontSize: 14,
-                        fontWeight: 700,
-                        textAlign: "left",
-                        fontVariantNumeric: "tabular-nums",
-                        outline: "none"
-                      }}
-                    />
-                    <span style={{fontSize: 11, color: C.textSoft, fontWeight: 500}}>кг</span>
-                  </div>
-                </div>
+        {/* Curriculum status */}
+        <div style={{padding: `0 ${SP.xl}px`, marginBottom: SP.xl}}>
+          <button onClick={() => setView({name: "curriculum"})} style={{
+            width: "100%", textAlign: "left", padding: SP.lg,
+            background: C.card, borderRadius: 14, border: `1px solid ${C.border}`,
+          }}>
+            <div style={{display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: SP.sm}}>
+              <div style={{fontSize: 11, fontWeight: 800, letterSpacing: 1.5, color: C.accent}}>
+                СЕССИЯ {currentKey > 20 ? "—" : currentKey}/20
               </div>
-            );
-          })}
+              <div style={{fontSize: 11, color: C.textDim, fontWeight: 700}}>
+                {totalDone}/20
+              </div>
+            </div>
+            <div className="tbig" style={{fontSize: 22, color: C.text, marginBottom: SP.xs}}>
+              {currentKey > 20 ? "ПРОТОКОЛ ЗАВЕРШЁН" : `Ключ ${currentKey}: ${KEYS[currentKey-1].title}`}
+            </div>
+            {currentKey <= 20 && (
+              <div style={{fontSize: 12, color: C.textDim, marginBottom: SP.sm}}>
+                {phaseKey.name} · {phaseKey.desc}
+              </div>
+            )}
+            <ProgressBar value={totalDone} max={20}/>
+          </button>
+        </div>
+
+        {/* Quick actions grid */}
+        <div style={{padding: `0 ${SP.xl}px`, display: "grid", gridTemplateColumns: "1fr 1fr", gap: SP.md, marginBottom: SP.xl}}>
+          <ActionTile
+            icon="flame" label="СОСТОЯНИЕ" sublabel="свершения"
+            count={todayCompletions.length}
+            onClick={() => setView({name: "completion"})}
+          />
+          <ActionTile
+            icon="mirror" label="ЗЕРКАЛО" sublabel="отношений"
+            count={todayMirrors.length}
+            onClick={() => setView({name: "mirrors"})}
+          />
+          <ActionTile
+            icon="eye" label="ЭХО" sublabel="отражения мира"
+            count={todayEchoes.length}
+            onClick={() => setView({name: "echoes"})}
+          />
+          <ActionTile
+            icon="check" label="СТРАХИ" sublabel="три паттерна"
+            count={null}
+            onClick={() => setView({name: "fears"})}
+          />
+        </div>
+
+        {/* Goals */}
+        <div style={{padding: `0 ${SP.xl}px ${SP.xxxl}px`}}>
+          <div style={{fontSize: 11, fontWeight: 800, letterSpacing: 1.5, color: C.textDim, marginBottom: SP.sm}}>
+            ЦЕЛИ
+          </div>
+          {state.goals.map((g, i) => (
+            <div key={g.id} style={{
+              padding: `${SP.md}px 0`, borderBottom: `1px solid ${C.borderSoft}`,
+            }}>
+              <div style={{fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 2}}>
+                {g.text}
+              </div>
+              <div style={{fontSize: 12, color: C.accent, fontStyle: "italic"}}>
+                Я — {g.identity}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     );
   }
 
-  // ═══ SUNDAY REST VIEW ═════════════════════════════════════════════════
-  if (view === "rest") {
-    const rk = `rest-${curWeek}`;
-    const rdata = state.rest[rk] || {};
-    const doneCount = REST_EX.filter(e => rdata[e.id]).length;
-    const allDone = doneCount === REST_EX.length;
-
+  // ─── Curriculum list ───
+  if (view.name === "curriculum") {
     return (
       <div style={sc}>
-        <TopBar onBack={() => setView("home")}/>
-
-        <div style={{padding:`${SP.xl}px ${SP.xl}px 0`}}>
-          <h1 className="tbig" style={{
-            fontSize: 52,
-            color: C.text,
-            margin: 0,
-            textTransform: "uppercase"
-          }}>
-            ВОСКРЕСЕНЬЕ
-          </h1>
-          <div style={{fontSize: 13, color: C.textDim, marginTop: SP.sm, fontWeight: 500}}>
-            W{curWeek} · <span style={{color: C.rest, fontWeight: 700}}>ПОЛНЫЙ ОТДЫХ</span> · восстановление
-          </div>
-
-          <div style={{marginTop: SP.lg, display: "flex", alignItems: "center", gap: SP.md}}>
-            <div style={{flex: 1, height: 3, background: C.border, borderRadius: 2, overflow: "hidden"}}>
-              <div style={{
-                height: "100%",
-                width: `${(doneCount/REST_EX.length)*100}%`,
-                background: C.rest,
-                transition: "width .4s"
-              }}/>
-            </div>
-            <div style={{
-              fontSize: 13,
-              color: C.textDim,
-              fontWeight: 700,
-              fontVariantNumeric: "tabular-nums",
-              minWidth: 40,
-              textAlign: "right"
-            }}>
-              {doneCount}/{REST_EX.length}
-            </div>
-          </div>
-        </div>
-
-        <div style={{padding: `${SP.xl}px ${SP.xl}px ${SP.xxxl}px`, display: "flex", flexDirection: "column"}}>
-          {REST_EX.map(ex => {
-            const d = rdata[ex.id];
-            return (
-              <div key={ex.id} style={{
-                display: "flex",
-                alignItems: "center",
-                gap: SP.md,
-                padding: `${SP.md}px 0`,
-                borderBottom: `1px solid ${C.border}`,
-                opacity: d ? 0.4 : 1
-              }}>
-                <button onClick={() => toggleRest(rk, ex.id)} style={{
-                  width: 22, height: 22,
-                  border: `1.5px solid ${d ? C.rest : C.textDim}`,
-                  background: d ? C.rest : "transparent",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  flexShrink: 0,
-                  borderRadius: 3
-                }}>
-                  {d && <Icon name="check" size={12} color="#fff" stroke={3}/>}
-                </button>
-                <div style={{flex: 1}}>
-                  <div style={{
-                    fontSize: 15,
-                    fontWeight: 700,
-                    color: C.text,
-                    textDecoration: d ? "line-through" : "none",
-                    textDecorationColor: C.rest,
-                    textDecorationThickness: "2px"
-                  }}>
-                    {ex.n}
-                  </div>
-                  <div style={{fontSize: 12, color: C.textDim, marginTop: 2, fontWeight: 600}}>{ex.s}</div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    );
-  }
-
-  // ═══ CALENDAR VIEW (all 10 weeks) ══════════════════════════════════════
-  if (view === "calendar") {
-    return (
-      <div style={sc}>
-        <TopBar onBack={() => setView("home")} title="ПРОГРАММА"/>
-
+        <TopBar onBack={() => setView({name: "home"})}/>
         <div style={{padding: `${SP.lg}px ${SP.xl}px 0`}}>
-          <h1 className="tbig" style={{fontSize: 48, color: C.text, margin: 0, textTransform: "uppercase"}}>
-            10 НЕДЕЛЬ
+          <h1 className="tbig" style={{fontSize: 44, color: C.text, margin: 0, textTransform: "uppercase"}}>
+            20 КЛЮЧЕЙ
           </h1>
-          <div style={{fontSize: 13, color: C.textDim, marginTop: SP.sm, fontWeight: 500}}>
-            Upper/Lower · 6 дней · Elevate Gym
+          <div style={{fontSize: 13, color: C.textDim, marginTop: SP.sm, marginBottom: SP.xl}}>
+            Брейден настаивает: проходить последовательно. Не торопись — один ключ может занять день или несколько.
           </div>
         </div>
 
-        <div style={{padding: `${SP.xl}px ${SP.xl}px ${SP.xxxl}px`}}>
+        <div style={{padding: `0 ${SP.xl}px ${SP.xxxl}px`}}>
           {PHASES.map(phase => (
-            <div key={phase.name} style={{marginBottom: SP.xl}}>
+            <div key={phase.id} style={{marginBottom: SP.xl}}>
               <div style={{
-                display: "flex",
-                alignItems: "baseline",
-                justifyContent: "space-between",
-                marginBottom: SP.md,
-                paddingBottom: SP.sm,
-                borderBottom: `2px solid ${C.text}`
+                display: "flex", alignItems: "baseline", justifyContent: "space-between",
+                marginBottom: SP.md, paddingBottom: SP.sm, borderBottom: `2px solid ${C.text}`,
               }}>
-                <div className="tbig" style={{fontSize: 20, textTransform: "uppercase", color: C.text}}>
+                <div className="tbig" style={{fontSize: 18, textTransform: "uppercase", color: C.text}}>
                   {phase.name}
                 </div>
                 <div style={{fontSize: 11, color: C.textDim, fontWeight: 700, letterSpacing: 1}}>
-                  W{phase.weeks.join(",")}
+                  K{phase.keys[0]}–{phase.keys[phase.keys.length-1]}
                 </div>
               </div>
-
-              {phase.weeks.map(wn => {
-                const wd = PROG[wn];
-                const isCur = wn === curWeek;
-                const wEx = wd.days.flatMap(d => d.ex);
-                const done = wEx.filter(e => state.completed[e.id]).length;
-                const total = wEx.length;
-                const allDone = done === total && total > 0;
-
+              {phase.keys.map(n => {
+                const k = KEYS[n-1];
+                const done = state.curriculum[n];
+                const locked = n > currentKey;
+                const cur = n === currentKey;
                 return (
-                  <div key={wn} style={{
-                    padding: `${SP.md}px 0`,
-                    borderBottom: `1px solid ${C.border}`
-                  }}>
-                    <div style={{display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: SP.sm}}>
-                      <div style={{display: "flex", alignItems: "baseline", gap: SP.sm}}>
-                        <div className="tbig" style={{fontSize: 28, color: isCur ? C.accent : C.text, fontVariantNumeric: "tabular-nums"}}>
-                          W{wn}
-                        </div>
-                        {isCur && (
-                          <div style={{
-                            fontSize: 9, fontWeight: 800, letterSpacing: 1.5,
-                            color: C.accent, textTransform: "uppercase"
-                          }}>
-                            СЕЙЧАС
-                          </div>
-                        )}
+                  <button key={n} onClick={() => !locked && setView({name: "session", n})}
+                    disabled={locked}
+                    style={{
+                      width: "100%", textAlign: "left",
+                      padding: `${SP.md}px 0`, borderBottom: `1px solid ${C.borderSoft}`,
+                      display: "flex", alignItems: "flex-start", gap: SP.md,
+                      opacity: locked ? 0.4 : 1,
+                    }}>
+                    <div style={{
+                      width: 32, height: 32, borderRadius: 8,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      background: done ? C.text : (cur ? C.accent : "transparent"),
+                      border: !done && !cur ? `1.5px solid ${C.border}` : "none",
+                      flexShrink: 0,
+                      fontSize: 13, fontWeight: 800, color: (done || cur) ? "#FFF" : C.textDim,
+                      fontVariantNumeric: "tabular-nums",
+                    }}>
+                      {locked ? <Icon name="lock" size={14} color={C.textDim} stroke={1.7}/> :
+                       done   ? <Icon name="check" size={14} color="#FFF" stroke={3}/> : n}
+                    </div>
+                    <div style={{flex: 1, minWidth: 0}}>
+                      <div style={{fontSize: 15, fontWeight: 700, color: C.text, lineHeight: 1.3}}>
+                        {k.title}
                       </div>
-                      <div style={{
-                        fontSize: 12, fontWeight: 700,
-                        color: allDone ? C.text : C.textDim,
-                        fontVariantNumeric: "tabular-nums"
-                      }}>
-                        {done}/{total}
+                      <div style={{fontSize: 12, color: C.textDim, marginTop: 2}}>
+                        {cur && !done ? "ТЕКУЩАЯ" : done ? `пройдено ${fmtDate(done.completedAt)}` : "..."}
                       </div>
                     </div>
-
-                    <WeekDotsRow
-                      week={wn}
-                      state={state}
-                      onSelect={(type, i) => { setSelW(wn); setSelD(i); setView(type); }}
-                      todayDow={isCur ? dayOfWeek : null}
-                    />
-                  </div>
+                  </button>
                 );
               })}
             </div>
@@ -978,519 +752,873 @@ function App() {
     );
   }
 
-  // ═══ HOME VIEW ═══════════════════════════════════════════════════════════
-  const phase = getPhase(curWeek);
-  const todayDay = isTrainingToday ? PROG[curWeek].days[todayDayIdx] : null;
-  const todayDone = todayDay ? todayDay.ex.filter(e => state.completed[e.id]).length : 0;
-  const todayTotal = todayDay ? todayDay.ex.length : 0;
+  // ─── Single session ───
+  if (view.name === "session") {
+    const k = KEYS[view.n - 1];
+    const ph = phaseOf(view.n);
+    const isDone = !!state.curriculum[view.n];
+    const isCurrent = view.n === currentKey;
 
-  const todayRestKey = isRestToday ? `rest-${curWeek}` : null;
-  const todayRestData = todayRestKey ? (state.rest[todayRestKey] || {}) : {};
-  const todayRestDone = REST_EX.filter(e => todayRestData[e.id]).length;
+    return <SessionView
+      k={k} ph={ph} isDone={isDone} isCurrent={isCurrent}
+      onBack={() => setView({name: "curriculum"})}
+      onComplete={(note) => { completeKey(view.n, note); setView({name: "home"}); }}
+    />;
+  }
 
-  const today = new Date();
-  const todayStr = `${today.getDate()} ${MONTHS_RU[today.getMonth()]} ${today.getFullYear()}`;
+  // ─── Completion practice ───
+  if (view.name === "completion") {
+    return <CompletionView
+      goals={state.goals}
+      onBack={() => setView({name: "home"})}
+      onSave={(entry) => { addCompletion(entry); setView({name: "home"}); }}
+    />;
+  }
+
+  // ─── Mirrors list ───
+  if (view.name === "mirrors") {
+    return <MirrorsList
+      mirrors={state.mirrors}
+      onBack={() => setView({name: "home"})}
+      onNew={() => setView({name: "mirror-new"})}
+      onOpen={(m) => setView({name: "mirror-view", m})}
+    />;
+  }
+  if (view.name === "mirror-new") {
+    return <MirrorNew
+      onBack={() => setView({name: "mirrors"})}
+      onSave={(entry) => { addMirror(entry); setView({name: "mirrors"}); }}
+    />;
+  }
+  if (view.name === "mirror-view") {
+    return <MirrorRead m={view.m} onBack={() => setView({name: "mirrors"})}/>;
+  }
+
+  // ─── Fears ───
+  if (view.name === "fears") {
+    return <FearsView
+      fears={state.fears}
+      onBack={() => setView({name: "home"})}
+      onSet={setFear}
+    />;
+  }
+
+  // ─── Echoes ───
+  if (view.name === "echoes") {
+    return <EchoesView
+      echoes={state.echoes}
+      goals={state.goals}
+      onBack={() => setView({name: "home"})}
+      onAdd={addEcho}
+    />;
+  }
+
+  // ─── Settings ───
+  if (view.name === "settings") {
+    return <SettingsView
+      state={state}
+      onBack={() => setView({name: "home"})}
+      onImport={(s) => save(s)}
+      onReset={() => { localStorage.removeItem(STORAGE_KEY); save(defaultState()); setView({name: "home"}); }}
+    />;
+  }
+
+  return null;
+}
+
+// ═══ ACTION TILE ═════════════════════════════════════════════════════════════
+function ActionTile({ icon, label, sublabel, count, onClick }) {
+  return (
+    <button onClick={onClick} style={{
+      padding: SP.lg, background: C.card, borderRadius: 14,
+      border: `1px solid ${C.border}`, textAlign: "left",
+      display: "flex", flexDirection: "column", justifyContent: "space-between",
+      minHeight: 110,
+    }}>
+      <div style={{display: "flex", justifyContent: "space-between", alignItems: "flex-start"}}>
+        <Icon name={icon} size={20} color={C.accent} stroke={1.7}/>
+        {count !== null && count > 0 && (
+          <div style={{
+            background: C.accent, color: "#FFF", fontSize: 10, fontWeight: 800,
+            padding: "2px 7px", borderRadius: 10, minWidth: 18, textAlign: "center",
+          }}>
+            {count}
+          </div>
+        )}
+      </div>
+      <div>
+        <div style={{fontSize: 14, fontWeight: 800, color: C.text, letterSpacing: 0.3}}>{label}</div>
+        <div style={{fontSize: 11, color: C.textDim, marginTop: 2}}>{sublabel}</div>
+      </div>
+    </button>
+  );
+}
+
+// ═══ SESSION VIEW ════════════════════════════════════════════════════════════
+function SessionView({ k, ph, isDone, isCurrent, onBack, onComplete }) {
+  const [note, setNote] = useState("");
 
   return (
     <div style={sc}>
-      <div style={{padding: `${SP.xl}px ${SP.xl}px ${SP.lg}px`}}>
-        <div style={{display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: SP.md}}>
-          <div style={{flex: 1, minWidth: 0}}>
-            <h1 className="tbig" style={{
-              fontSize: 52,
-              color: C.text,
-              margin: 0,
-              textTransform: "uppercase",
-              lineHeight: 0.85
-            }}>
-              {DAY_NAMES_FULL[dayOfWeek]}
-            </h1>
-            <div style={{
-              fontSize: 13,
-              color: C.textDim,
-              marginTop: SP.md,
-              fontWeight: 500,
-              letterSpacing: 0.2
-            }}>
-              {todayStr} <span style={{color: C.textSoft}}>·</span> W{curWeek}/10 <span style={{color: C.textSoft}}>·</span> <span style={{color: isTrainingToday ? C.accent : C.rest, fontWeight: 700}}>{phase.short}</span>
-            </div>
+      <TopBar onBack={onBack}/>
+      <div style={{padding: `${SP.lg}px ${SP.xl}px ${SP.xxxl}px`, maxWidth: 580, margin: "0 auto"}}>
+        <div style={{fontSize: 11, fontWeight: 800, letterSpacing: 2, color: C.accent, marginBottom: SP.sm}}>
+          {ph.name} · КЛЮЧ {k.n}/20
+        </div>
+        <h1 className="tbig" style={{fontSize: 32, color: C.text, marginBottom: SP.lg, lineHeight: 1.05}}>
+          {k.title}
+        </h1>
+
+        <div className="quote" style={{
+          padding: SP.md, background: C.accentSoft, borderLeft: `3px solid ${C.accent}`,
+          fontSize: 13, marginBottom: SP.xl, borderRadius: "0 8px 8px 0",
+        }}>
+          {k.quote}
+        </div>
+
+        <div className="body-text" style={{fontSize: 15, marginBottom: SP.xl}}>
+          {k.body.map((p, i) => <p key={i}>{p}</p>)}
+        </div>
+
+        <div style={{
+          padding: SP.lg, background: C.card, borderRadius: 12,
+          border: `1px solid ${C.border}`, marginBottom: SP.xl,
+        }}>
+          <div style={{fontSize: 11, fontWeight: 800, letterSpacing: 1.5, color: C.accent, marginBottom: SP.sm}}>
+            МИКРО-УПРАЖНЕНИЕ
           </div>
-          <button onClick={() => setView("calendar")} style={{
-            width: 40, height: 40,
-            borderRadius: 10,
-            background: C.text,
-            color: C.bg,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            flexShrink: 0
+          <div style={{fontSize: 14, color: C.text, lineHeight: 1.5}}>
+            {k.ex}
+          </div>
+        </div>
+
+        <div style={{marginBottom: SP.xl}}>
+          <div style={{fontSize: 11, fontWeight: 800, letterSpacing: 1.5, color: C.textDim, marginBottom: SP.sm}}>
+            ЧТО ПРОЧУВСТВОВАЛ (опционально)
+          </div>
+          <textarea
+            value={note} onChange={e => setNote(e.target.value)}
+            placeholder="Любые наблюдения, инсайты, сопротивление, отзвук..."
+            rows={4}
+            style={{
+              width: "100%", padding: SP.md, border: `1px solid ${C.border}`,
+              borderRadius: 8, fontSize: 14, background: C.card, outline: "none",
+            }}
+          />
+        </div>
+
+        {isDone ? (
+          <div style={{
+            padding: SP.md, textAlign: "center",
+            background: C.text, color: C.bg, borderRadius: 10,
+            fontSize: 12, fontWeight: 800, letterSpacing: 1.5,
           }}>
-            <Icon name="calendar" size={18} color={C.bg}/>
-          </button>
+            ПРОЙДЕНО
+          </div>
+        ) : (
+          <Btn onClick={() => onComplete(note)} variant="accent" full>
+            Завершить ключ {k.n}
+          </Btn>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ═══ COMPLETION (state of completion) ═══════════════════════════════════════
+const PHASE_NAMES = ["Сострадание", "Сценарий", "Чувство", "Лог"];
+const PHASE_DURATIONS = [60, 120, 300, 0]; // sec; last phase has no timer
+
+function CompletionView({ goals, onBack, onSave }) {
+  const [step, setStep] = useState(0); // 0=goal pick, 1-4=phases
+  const [goalId, setGoalId] = useState(goals[0]?.id);
+  const [phase, setPhase] = useState(0); // 0..3
+  const [running, setRunning] = useState(false);
+  const [secLeft, setSecLeft] = useState(PHASE_DURATIONS[0]);
+  const [clarity, setClarity] = useState(7);
+  const [charge, setCharge] = useState(7);
+  const [body, setBody] = useState("");
+  const [attached, setAttached] = useState(3);
+  const [totalSec, setTotalSec] = useState(0);
+
+  const goal = goals.find(g => g.id === goalId);
+
+  useEffect(() => {
+    if (!running || step !== 1) return;
+    const t = setInterval(() => {
+      setSecLeft(s => {
+        setTotalSec(ts => ts + 1);
+        if (s <= 1) {
+          // advance phase
+          if (phase < 2) {
+            setPhase(p => p + 1);
+            return PHASE_DURATIONS[phase + 1];
+          } else {
+            setRunning(false);
+            setStep(2); // log
+            return 0;
+          }
+        }
+        return s - 1;
+      });
+    }, 1000);
+    return () => clearInterval(t);
+  }, [running, phase, step]);
+
+  const startSession = () => {
+    setStep(1);
+    setPhase(0);
+    setSecLeft(PHASE_DURATIONS[0]);
+    setRunning(true);
+  };
+
+  const skipPhase = () => {
+    if (phase < 2) {
+      setPhase(p => p + 1);
+      setSecLeft(PHASE_DURATIONS[phase + 1]);
+    } else {
+      setRunning(false);
+      setStep(2);
+    }
+  };
+
+  // Goal pick
+  if (step === 0) {
+    return (
+      <div style={sc}>
+        <TopBar onBack={onBack}/>
+        <div style={{padding: `${SP.lg}px ${SP.xl}px ${SP.xxxl}px`, maxWidth: 480, margin: "0 auto"}}>
+          <h1 className="tbig" style={{fontSize: 36, marginBottom: SP.sm, color: C.text, textTransform: "uppercase"}}>
+            Состояние свершения
+          </h1>
+          <div style={{fontSize: 13, color: C.textDim, marginBottom: SP.xl, lineHeight: 1.5}}>
+            Цикл из 4 фаз: сострадание → сценарий → чувство → лог. Всего 8–10 минут. Найди тихое место.
+          </div>
+
+          <div style={{fontSize: 11, fontWeight: 800, letterSpacing: 1.5, color: C.accent, marginBottom: SP.sm}}>
+            ЦЕЛЬ ДЛЯ ЭТОГО ЦИКЛА
+          </div>
+          {goals.map(g => (
+            <button key={g.id} onClick={() => setGoalId(g.id)} style={{
+              width: "100%", textAlign: "left", padding: SP.md, marginBottom: SP.sm,
+              background: goalId === g.id ? C.accentSoft : C.card,
+              border: `1.5px solid ${goalId === g.id ? C.accent : C.border}`,
+              borderRadius: 10,
+            }}>
+              <div style={{fontSize: 14, fontWeight: 700, color: C.text}}>{g.text}</div>
+              <div style={{fontSize: 12, color: C.accent, fontStyle: "italic", marginTop: 2}}>Я — {g.identity}</div>
+            </button>
+          ))}
+
+          <div style={{marginTop: SP.xl}}>
+            <Btn onClick={startSession} variant="accent" full disabled={!goalId}>
+              Начать цикл
+            </Btn>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Timed phases
+  if (step === 1) {
+    const phaseTexts = [
+      // 0 — Compassion anchor
+      <div>
+        <div style={{fontSize: 14, color: C.textDim, marginBottom: SP.sm, lineHeight: 1.5}}>Тибетский монах: сострадание — творящая сила.</div>
+        <div style={{fontSize: 17, color: C.text, lineHeight: 1.5}}>Сделай 5 медленных вдохов. На вдохе — благодарность за то, что уже есть. На выдохе — расслабление лица и плеч.</div>
+      </div>,
+      // 1 — Scenario
+      <div>
+        <div style={{fontSize: 14, color: C.textDim, marginBottom: SP.sm, lineHeight: 1.5}}>Произнеси про себя в настоящем времени, как уже свершившееся:</div>
+        <div className="quote" style={{fontSize: 19, color: C.text, marginTop: SP.md, lineHeight: 1.5}}>
+          {goal?.text}
+        </div>
+        <div style={{fontSize: 14, color: C.accent, fontStyle: "italic", marginTop: SP.md}}>
+          Я — {goal?.identity}
+        </div>
+      </div>,
+      // 2 — Feeling
+      <div>
+        <div style={{fontSize: 14, color: C.textDim, marginBottom: SP.sm, lineHeight: 1.5}}>Закрой глаза. Без слов.</div>
+        <div style={{fontSize: 17, color: C.text, lineHeight: 1.5}}>Просто чувство, что это уже так. Благодарность, а не просьба. Не пытайся «сильнее» — это только эго. Если ум ушёл — мягко вернись.</div>
+      </div>,
+    ][phase];
+
+    const mm = Math.floor(secLeft / 60);
+    const ss = secLeft % 60;
+
+    return (
+      <div style={{...sc, display: "flex", flexDirection: "column"}}>
+        <TopBar onBack={() => { setRunning(false); setStep(0); }} title={`ФАЗА ${phase+1}/3`}/>
+
+        <div style={{flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", padding: SP.xl, maxWidth: 480, margin: "0 auto", width: "100%"}}>
+          <div style={{fontSize: 11, fontWeight: 800, letterSpacing: 2, color: C.accent, marginBottom: SP.md}}>
+            {PHASE_NAMES[phase]}
+          </div>
+
+          <div style={{minHeight: 240}}>
+            {phaseTexts}
+          </div>
+
+          <div style={{marginTop: SP.xxl}}>
+            <div className="tbig" style={{fontSize: 64, color: C.text, fontVariantNumeric: "tabular-nums", textAlign: "center"}}>
+              {String(mm).padStart(2,"0")}:{String(ss).padStart(2,"0")}
+            </div>
+
+            <div style={{display: "flex", gap: SP.md, marginTop: SP.lg, alignItems: "center"}}>
+              <div style={{flex: 1}}>
+                <ProgressBar value={PHASE_DURATIONS[phase] - secLeft} max={PHASE_DURATIONS[phase]}/>
+              </div>
+              <button onClick={() => setRunning(r => !r)} style={{
+                width: 48, height: 48, borderRadius: "50%", background: C.text,
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}>
+                <Icon name={running ? "pause" : "play"} size={18} color={C.bg} stroke={2.5}/>
+              </button>
+            </div>
+
+            <button onClick={skipPhase} style={{
+              marginTop: SP.lg, width: "100%", padding: SP.sm,
+              fontSize: 12, color: C.textDim, fontWeight: 700, letterSpacing: 1, textTransform: "uppercase",
+            }}>
+              {phase < 2 ? "Следующая фаза →" : "К логу →"}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Log
+  if (step === 2) {
+    return (
+      <div style={sc}>
+        <TopBar onBack={() => setStep(0)} title="ЛОГ"/>
+        <div style={{padding: `${SP.lg}px ${SP.xl}px ${SP.xxxl}px`, maxWidth: 480, margin: "0 auto"}}>
+          <div style={{fontSize: 11, fontWeight: 800, letterSpacing: 2, color: C.accent, marginBottom: SP.sm}}>
+            ФАЗА 4/4 · ФИКСАЦИЯ
+          </div>
+          <h1 className="tbig" style={{fontSize: 28, marginBottom: SP.xl, color: C.text}}>
+            Что было?
+          </h1>
+
+          <SliderField label="Ясность чувства" value={clarity} onChange={setClarity} hint="0=пусто, 10=ярче реального"/>
+          <SliderField label="Эмоциональный заряд" value={charge} onChange={setCharge} hint="0=плоско, 10=мощно"/>
+          <SliderField label="Привязка к результату" value={attached} onChange={setAttached} hint="0=без привязки (Ключ 10), 10=жажда" inverted/>
+
+          <div style={{marginTop: SP.xl}}>
+            <div style={{fontSize: 11, fontWeight: 800, letterSpacing: 1.5, color: C.textDim, marginBottom: SP.sm}}>
+              ТЕЛЕСНОЕ ОЩУЩЕНИЕ (опционально)
+            </div>
+            <textarea
+              value={body} onChange={e => setBody(e.target.value)}
+              placeholder="Где в теле? Тепло, лёгкость, дрожь, расширение..."
+              rows={3}
+              style={{
+                width: "100%", padding: SP.md, border: `1px solid ${C.border}`,
+                borderRadius: 8, fontSize: 14, background: C.card, outline: "none",
+              }}
+            />
+          </div>
+
+          <div style={{marginTop: SP.xl}}>
+            <Btn onClick={() => onSave({ goalId, durationSec: totalSec, clarity, charge, body, attached })} variant="accent" full>
+              Сохранить
+            </Btn>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+}
+
+function SliderField({ label, value, onChange, hint, inverted }) {
+  return (
+    <div style={{marginBottom: SP.lg}}>
+      <div style={{display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: SP.sm}}>
+        <div style={{fontSize: 13, fontWeight: 700, color: C.text}}>{label}</div>
+        <div className="tbig" style={{fontSize: 22, color: inverted ? (value > 5 ? C.alert : C.accent) : C.accent, fontVariantNumeric: "tabular-nums"}}>
+          {value}
+        </div>
+      </div>
+      <input type="range" min="0" max="10" value={value} onChange={e => onChange(+e.target.value)} style={{width: "100%"}}/>
+      {hint && <div style={{fontSize: 11, color: C.textSoft, marginTop: 4}}>{hint}</div>}
+    </div>
+  );
+}
+
+// ═══ MIRRORS ═════════════════════════════════════════════════════════════════
+function MirrorsList({ mirrors, onBack, onNew, onOpen }) {
+  return (
+    <div style={sc}>
+      <TopBar onBack={onBack}/>
+      <div style={{padding: `${SP.lg}px ${SP.xl}px 0`}}>
+        <h1 className="tbig" style={{fontSize: 44, color: C.text, margin: 0, textTransform: "uppercase"}}>
+          ЗЕРКАЛО
+        </h1>
+        <div style={{fontSize: 13, color: C.textDim, marginTop: SP.sm, marginBottom: SP.xl, lineHeight: 1.5}}>
+          5 зеркал отношений по Брейдену. На любую ситуацию, которая зацепила, прогоняешь все 5 вопросов. Отзовётся не каждый — это нормально.
         </div>
       </div>
 
-      {/* TODAY'S TRAINING */}
-      {isTrainingToday && todayDay && (
-        <div style={{padding: `0 ${SP.xl}px`, marginBottom: SP.xl}}>
-          <button onClick={() => { setSelW(curWeek); setSelD(todayDayIdx); setView("day"); }}
-            style={{
-              width: "100%",
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "flex-start",
-              background: "transparent",
-              padding: 0,
-              textAlign: "left"
-            }}>
-            {todayDay.ex.slice(0, 7).map((ex) => {
-              const d = state.completed[ex.id];
-              return (
-                <div key={ex.id} style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: SP.md,
-                  padding: "9px 0",
-                  width: "100%"
-                }}>
-                  <div style={{
-                    width: 18, height: 18,
-                    border: `1.5px solid ${d ? C.accent : C.textDim}`,
-                    background: d ? C.accent : "transparent",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    flexShrink: 0,
-                    borderRadius: 3
-                  }}>
-                    {d && <Icon name="check" size={11} color="#fff" stroke={3}/>}
-                  </div>
-                  <div style={{
-                    fontSize: 15,
-                    fontWeight: 600,
-                    color: d ? C.textDim : C.text,
-                    textDecoration: d ? "line-through" : "none",
-                    textDecorationColor: C.accent,
-                    textDecorationThickness: "2px",
-                    flex: 1,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap"
-                  }}>
-                    {ex.n}
-                  </div>
-                  <div style={{
-                    fontSize: 10,
-                    color: C.textSoft,
-                    fontWeight: 700,
-                    fontVariantNumeric: "tabular-nums"
-                  }}>
-                    {ex.s || "—"}
-                  </div>
-                </div>
-              );
-            })}
+      <div style={{padding: `0 ${SP.xl}px`}}>
+        <Btn onClick={onNew} variant="accent" full>+ Новая ситуация</Btn>
+      </div>
 
-            {todayDay.ex.length > 7 && (
-              <div style={{fontSize: 11, color: C.textSoft, padding: "4px 0", fontWeight: 600}}>
-                +{todayDay.ex.length - 7} ещё упражнений
-              </div>
-            )}
-
-            <div style={{
-              marginTop: SP.md,
-              paddingTop: SP.md,
-              borderTop: `1px solid ${C.border}`,
-              width: "100%",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between"
-            }}>
-              <div style={{fontSize: 11, color: C.textSoft, fontWeight: 700, letterSpacing: 1, textTransform: "uppercase"}}>
-                {todayDone}/{todayTotal} · {todayDay.name}
-              </div>
-              <Icon name="chevron" size={14} color={C.textSoft} stroke={2.5}/>
+      <div style={{padding: `${SP.xl}px ${SP.xl}px ${SP.xxxl}px`}}>
+        {mirrors.length === 0 ? (
+          <div style={{padding: SP.xl, textAlign: "center", color: C.textDim, fontSize: 13}}>
+            Записей пока нет. Брейден: «избежать своих отражений невозможно».
+          </div>
+        ) : mirrors.map(m => (
+          <button key={m.id} onClick={() => onOpen(m)} style={{
+            width: "100%", textAlign: "left",
+            padding: `${SP.md}px 0`, borderBottom: `1px solid ${C.borderSoft}`,
+          }}>
+            <div style={{fontSize: 11, color: C.textDim, fontWeight: 700, letterSpacing: 0.5}}>
+              {fmtDate(m.dateISO)}
+            </div>
+            <div style={{fontSize: 14, color: C.text, fontWeight: 600, marginTop: 2, lineHeight: 1.4,
+              overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical"}}>
+              {m.situation}
+            </div>
+            <div style={{fontSize: 11, color: C.accent, marginTop: 4, fontWeight: 700}}>
+              {[1,2,3,4,5].filter(i => m[`m${i}`]?.trim()).length} зеркал отзвалось
             </div>
           </button>
-        </div>
-      )}
+        ))}
+      </div>
+    </div>
+  );
+}
 
-      {isRestToday && (
-        <div style={{padding: `0 ${SP.xl}px`, marginBottom: SP.xl}}>
-          <button onClick={() => setView("rest")}
+function MirrorNew({ onBack, onSave }) {
+  const [step, setStep] = useState(0);
+  const [data, setData] = useState({ situation: "", m1: "", m2: "", m3: "", m4: "", m5: "" });
+
+  if (step === 0) {
+    return (
+      <div style={sc}>
+        <TopBar onBack={onBack} title="СИТУАЦИЯ"/>
+        <div style={{padding: `${SP.lg}px ${SP.xl}px ${SP.xxxl}px`, maxWidth: 480, margin: "0 auto"}}>
+          <h1 className="tbig" style={{fontSize: 28, marginBottom: SP.sm, color: C.text}}>
+            Что произошло?
+          </h1>
+          <div style={{fontSize: 13, color: C.textDim, marginBottom: SP.lg, lineHeight: 1.5}}>
+            Конкретный эпизод, человек, разговор, реакция — то, что зацепило. 1–3 предложения.
+          </div>
+          <textarea
+            value={data.situation} onChange={e => setData({...data, situation: e.target.value})}
+            placeholder="Например: на встрече коллега резко перебил, и я закрылся..."
+            rows={6} autoFocus
             style={{
-              width: "100%",
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "flex-start",
-              background: "transparent",
-              padding: 0,
-              textAlign: "left"
-            }}>
-            {REST_EX.map(ex => {
-              const d = todayRestData[ex.id];
-              return (
-                <div key={ex.id} style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: SP.md,
-                  padding: "9px 0",
-                  width: "100%"
-                }}>
-                  <div style={{
-                    width: 18, height: 18,
-                    border: `1.5px solid ${d ? C.rest : C.textDim}`,
-                    background: d ? C.rest : "transparent",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    flexShrink: 0,
-                    borderRadius: 3
-                  }}>
-                    {d && <Icon name="check" size={11} color="#fff" stroke={3}/>}
-                  </div>
-                  <div style={{
-                    fontSize: 15,
-                    fontWeight: 600,
-                    color: d ? C.textDim : C.text,
-                    textDecoration: d ? "line-through" : "none",
-                    textDecorationColor: C.rest,
-                    textDecorationThickness: "2px",
-                    flex: 1
-                  }}>
-                    {ex.n}
-                  </div>
-                  <div style={{
-                    fontSize: 11,
-                    color: C.textSoft,
-                    fontWeight: 600,
-                    fontVariantNumeric: "tabular-nums"
-                  }}>
-                    {ex.s}
-                  </div>
-                </div>
-              );
-            })}
-            <div style={{
-              marginTop: SP.md,
-              paddingTop: SP.md,
-              borderTop: `1px solid ${C.border}`,
-              width: "100%",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between"
-            }}>
-              <div style={{fontSize: 11, color: C.textSoft, fontWeight: 700, letterSpacing: 1, textTransform: "uppercase"}}>
-                {todayRestDone}/{REST_EX.length} · ПОЛНЫЙ ОТДЫХ
-              </div>
-              <Icon name="chevron" size={14} color={C.textSoft} stroke={2.5}/>
-            </div>
-          </button>
+              width: "100%", padding: SP.md, border: `1px solid ${C.border}`,
+              borderRadius: 8, fontSize: 15, background: C.card, outline: "none", marginBottom: SP.xl,
+            }}
+          />
+          <Btn onClick={() => setStep(1)} variant="accent" full disabled={!data.situation.trim()}>
+            Дальше
+          </Btn>
         </div>
-      )}
+      </div>
+    );
+  }
 
-      {/* WEEK DAYS STRIP — layered gradient strips like reference */}
-      <div style={{marginTop: SP.md}}>
-        {[
-          { dow: 1, idx: 0, label: "ПОНЕДЕЛЬНИК" },
-          { dow: 2, idx: 1, label: "ВТОРНИК" },
-          { dow: 3, idx: 2, label: "СРЕДА" },
-          { dow: 4, idx: 3, label: "ЧЕТВЕРГ" },
-          { dow: 5, idx: 4, label: "ПЯТНИЦА" },
-          { dow: 6, idx: 5, label: "СУББОТА" },
-          { dow: 0, idx: -1, label: "ВОСКРЕСЕНЬЕ", isRest: true },
-        ].filter(d => d.dow !== dayOfWeek).map((d, i) => {
-          const shade = 238 - (i * 5);
-          const bg = `rgb(${shade}, ${shade - 2}, ${shade - 6})`;
+  // Steps 1..5 — one mirror per step
+  const mirror = MIRRORS[step - 1];
+  const fieldKey = `m${step}`;
 
-          let itemCount = 0;
-          let itemDone = 0;
+  return (
+    <div style={sc}>
+      <TopBar onBack={() => setStep(step - 1)} title={`ЗЕРКАЛО ${step}/5`}/>
+      <div style={{padding: `${SP.lg}px ${SP.xl}px ${SP.xxxl}px`, maxWidth: 480, margin: "0 auto"}}>
+        <div style={{fontSize: 11, fontWeight: 800, letterSpacing: 2, color: C.accent, marginBottom: SP.sm}}>
+          ЗЕРКАЛО {mirror.n} · {mirror.name.toUpperCase()}
+        </div>
+        <h2 className="tbig" style={{fontSize: 24, marginBottom: SP.sm, color: C.text, lineHeight: 1.2}}>
+          {mirror.q}
+        </h2>
+        <div style={{fontSize: 13, color: C.textDim, marginBottom: SP.lg, lineHeight: 1.5, fontStyle: "italic"}}>
+          {mirror.hint}
+        </div>
 
-          if (d.isRest) {
-            const rk = `rest-${curWeek}`;
-            const rd = state.rest[rk] || {};
-            itemCount = REST_EX.length;
-            itemDone = REST_EX.filter(e => rd[e.id]).length;
-          } else {
-            const day = PROG[curWeek].days[d.idx];
-            if (day) {
-              itemCount = day.ex.length;
-              itemDone = day.ex.filter(e => state.completed[e.id]).length;
-            }
-          }
-          const isComplete = itemDone === itemCount && itemCount > 0;
+        <div style={{padding: SP.md, background: C.card, borderRadius: 8, marginBottom: SP.lg, fontSize: 13, color: C.textDim, border: `1px solid ${C.borderSoft}`}}>
+          <b style={{color: C.text}}>Ситуация:</b> {data.situation}
+        </div>
 
+        <textarea
+          value={data[fieldKey]} onChange={e => setData({...data, [fieldKey]: e.target.value})}
+          placeholder="Если не отзывается — оставь пусто и пропусти"
+          rows={5}
+          style={{
+            width: "100%", padding: SP.md, border: `1px solid ${C.border}`,
+            borderRadius: 8, fontSize: 14, background: C.card, outline: "none", marginBottom: SP.xl,
+          }}
+        />
+
+        {step < 5 ? (
+          <Btn onClick={() => setStep(step + 1)} variant="accent" full>
+            {data[fieldKey].trim() ? "Дальше" : "Пропустить →"}
+          </Btn>
+        ) : (
+          <Btn onClick={() => onSave(data)} variant="accent" full>
+            Сохранить
+          </Btn>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MirrorRead({ m, onBack }) {
+  return (
+    <div style={sc}>
+      <TopBar onBack={onBack}/>
+      <div style={{padding: `${SP.lg}px ${SP.xl}px ${SP.xxxl}px`, maxWidth: 580, margin: "0 auto"}}>
+        <div style={{fontSize: 11, color: C.textDim, fontWeight: 700, letterSpacing: 0.5, marginBottom: SP.sm}}>
+          {fmtDate(m.dateISO)}
+        </div>
+        <h1 className="tbig" style={{fontSize: 22, marginBottom: SP.xl, color: C.text, lineHeight: 1.3}}>
+          {m.situation}
+        </h1>
+
+        {MIRRORS.map(mr => {
+          const v = m[`m${mr.n}`];
+          if (!v?.trim()) return null;
           return (
-            <button key={d.dow} onClick={() => {
-              if (d.isRest) {
-                setView("rest");
-              } else {
-                setSelW(curWeek);
-                setSelD(d.idx);
-                setView("day");
-              }
-            }} style={{
-              width: "100%",
-              background: bg,
-              padding: `22px ${SP.xl}px`,
-              textAlign: "left",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: SP.md,
-              border: "none"
-            }}>
-              <div className="tbig" style={{
-                fontSize: 26,
-                color: C.text,
-                textTransform: "uppercase"
-              }}>
-                {d.label}
+            <div key={mr.n} style={{marginBottom: SP.xl}}>
+              <div style={{fontSize: 11, fontWeight: 800, letterSpacing: 1.5, color: C.accent, marginBottom: SP.xs}}>
+                ЗЕРКАЛО {mr.n} · {mr.name.toUpperCase()}
               </div>
-              <div style={{display: "flex", alignItems: "center", gap: SP.md}}>
-                {isComplete && (
-                  <div style={{
-                    width: 6, height: 6, borderRadius: 3,
-                    background: d.isRest ? C.rest : C.text
-                  }}/>
-                )}
-                <div style={{
-                  fontSize: 11,
-                  color: C.textDim,
-                  fontWeight: 700,
-                  fontVariantNumeric: "tabular-nums",
-                  letterSpacing: 0.5
-                }}>
-                  {itemDone}/{itemCount}
-                </div>
+              <div style={{fontSize: 13, color: C.textDim, fontStyle: "italic", marginBottom: SP.sm}}>
+                {mr.q}
               </div>
-            </button>
+              <div style={{fontSize: 15, color: C.text, lineHeight: 1.5,
+                padding: SP.md, background: C.card, borderRadius: 8, border: `1px solid ${C.borderSoft}`}}>
+                {v}
+              </div>
+            </div>
           );
         })}
       </div>
+    </div>
+  );
+}
 
-      <div style={{padding: SP.xl, textAlign: "center"}}>
-        <button
-          onClick={() => { if(confirm("Сбросить весь прогресс?")) save({startDate:null, completed:{}, weights:{}, rest:{}}); }}
-          style={{
-            background:"transparent",
-            color: C.textSoft,
-            padding: "8px 16px",
-            fontSize: 11,
-            fontWeight: 500,
-            textTransform: "uppercase",
-            letterSpacing: 1
-          }}>
-          сбросить прогресс
-        </button>
+// ═══ FEARS ═══════════════════════════════════════════════════════════════════
+function FearsView({ fears, onBack, onSet }) {
+  const [open, setOpen] = useState(null);
+
+  return (
+    <div style={sc}>
+      <TopBar onBack={onBack}/>
+      <div style={{padding: `${SP.lg}px ${SP.xl}px 0`}}>
+        <h1 className="tbig" style={{fontSize: 44, color: C.text, margin: 0, textTransform: "uppercase"}}>
+          СТРАХИ
+        </h1>
+        <div style={{fontSize: 13, color: C.textDim, marginTop: SP.sm, marginBottom: SP.xl, lineHeight: 1.5}}>
+          Брейден (Ключ 18): все негативные переживания сводятся к этим трём паттернам или их комбинации.
+        </div>
+      </div>
+
+      <div style={{padding: `0 ${SP.xl}px ${SP.xxxl}px`}}>
+        {FEARS.map(f => {
+          const cur = fears.current[f.id];
+          const isOpen = open === f.id;
+          const hist = fears.history.filter(h => h.fear === f.id).slice(-7);
+          return (
+            <div key={f.id} style={{
+              background: C.card, borderRadius: 12,
+              border: `1px solid ${C.border}`, marginBottom: SP.md, overflow: "hidden",
+            }}>
+              <button onClick={() => setOpen(isOpen ? null : f.id)} style={{
+                width: "100%", textAlign: "left", padding: SP.lg,
+                display: "flex", alignItems: "center", justifyContent: "space-between", gap: SP.md,
+              }}>
+                <div style={{flex: 1}}>
+                  <div style={{fontSize: 16, fontWeight: 800, color: C.text}}>{f.name}</div>
+                  <div style={{fontSize: 12, color: C.textDim, marginTop: 2}}>{f.desc}</div>
+                </div>
+                <div className="tbig" style={{fontSize: 32,
+                  color: cur >= 7 ? C.alert : cur >= 4 ? C.accent : C.warm,
+                  fontVariantNumeric: "tabular-nums"}}>
+                  {cur}
+                </div>
+              </button>
+
+              {isOpen && (
+                <div style={{padding: `0 ${SP.lg}px ${SP.lg}px`, borderTop: `1px solid ${C.borderSoft}`}}>
+                  <div style={{fontSize: 11, fontWeight: 800, letterSpacing: 1.5, color: C.textDim, marginTop: SP.md, marginBottom: SP.sm}}>
+                    ПАТТЕРНЫ ИЗ КНИГИ
+                  </div>
+                  <ul style={{paddingLeft: 18, fontSize: 13, color: C.text, lineHeight: 1.6}}>
+                    {f.patterns.map((p, i) => <li key={i} style={{marginBottom: 4}}>{p}</li>)}
+                  </ul>
+
+                  <div style={{marginTop: SP.lg}}>
+                    <SliderField label="Где я сейчас" value={cur} onChange={(v) => onSet(f.id, v)} hint="0 = страх не активен, 10 = доминирует"/>
+                  </div>
+
+                  {hist.length > 0 && (
+                    <div style={{marginTop: SP.md}}>
+                      <div style={{fontSize: 11, fontWeight: 800, letterSpacing: 1.5, color: C.textDim, marginBottom: SP.sm}}>
+                        ПОСЛЕДНИЕ {hist.length}
+                      </div>
+                      <div style={{display: "flex", gap: 4, alignItems: "flex-end", height: 40}}>
+                        {hist.map(h => (
+                          <div key={h.id} style={{
+                            flex: 1, height: `${h.score * 10}%`,
+                            background: h.score >= 7 ? C.alert : h.score >= 4 ? C.accent : C.warm,
+                            borderRadius: 2, minHeight: 3,
+                          }} title={`${fmtDate(h.dateISO)}: ${h.score}`}/>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
 }
 
-// ═══ WEEK DOTS ROW ══════════════════════════════════════════════════════════
-function WeekDotsRow({ week, state, onSelect, todayDow }) {
-  const days = [
-    { dow: 1, idx: 0, letter: "П" },
-    { dow: 2, idx: 1, letter: "В" },
-    { dow: 3, idx: 2, letter: "С" },
-    { dow: 4, idx: 3, letter: "Ч" },
-    { dow: 5, idx: 4, letter: "П" },
-    { dow: 6, idx: 5, letter: "С" },
-    { dow: 0, idx: -1, letter: "В", isRest: true },
-  ];
+// ═══ ECHOES ══════════════════════════════════════════════════════════════════
+function EchoesView({ echoes, goals, onBack, onAdd }) {
+  const [event, setEvent] = useState("");
+  const [reflection, setReflection] = useState("");
+  const [goalId, setGoalId] = useState("");
+
+  const submit = () => {
+    if (!event.trim()) return;
+    onAdd({ event, reflection, goalId: goalId || null });
+    setEvent(""); setReflection(""); setGoalId("");
+  };
 
   return (
-    <div style={{display: "flex", gap: 6, alignItems: "center"}}>
-      {days.map(d => {
-        const isToday = d.dow === todayDow;
-        let isDone = false;
-        let hasProgress = false;
+    <div style={sc}>
+      <TopBar onBack={onBack}/>
+      <div style={{padding: `${SP.lg}px ${SP.xl}px 0`}}>
+        <h1 className="tbig" style={{fontSize: 44, color: C.text, margin: 0, textTransform: "uppercase"}}>
+          ЭХО
+        </h1>
+        <div style={{fontSize: 13, color: C.textDim, marginTop: SP.sm, marginBottom: SP.xl, lineHeight: 1.5}}>
+          Ключ 17: матрица отражает чувства в события. Лог совпадений, странных встреч, подтверждений и опровержений.
+        </div>
+      </div>
 
-        if (d.isRest) {
-          const rk = `rest-${week}`;
-          const rd = state.rest[rk] || {};
-          const done = REST_EX.filter(e => rd[e.id]).length;
-          isDone = done === REST_EX.length;
-          hasProgress = done > 0;
-        } else {
-          const day = PROG[week].days[d.idx];
-          if (day) {
-            const done = day.ex.filter(e => state.completed[e.id]).length;
-            isDone = done === day.ex.length;
-            hasProgress = done > 0;
-          }
-        }
-
-        let dotBg, dotBorder;
-        if (isToday) {
-          dotBg = C.accent; dotBorder = C.accent;
-        } else if (isDone) {
-          dotBg = d.isRest ? C.rest : C.text;
-          dotBorder = dotBg;
-        } else if (hasProgress) {
-          dotBg = C.textSoft; dotBorder = C.textSoft;
-        } else {
-          dotBg = "transparent"; dotBorder = C.border;
-        }
-
-        return (
-          <button key={d.dow} onClick={() => d.isRest ? null : onSelect("day", d.idx)}
+      <div style={{padding: `0 ${SP.xl}px`, marginBottom: SP.xl}}>
+        <div style={{padding: SP.lg, background: C.card, borderRadius: 12, border: `1px solid ${C.border}`}}>
+          <div style={{fontSize: 11, fontWeight: 800, letterSpacing: 1.5, color: C.accent, marginBottom: SP.xs}}>
+            ЧТО ПРОИЗОШЛО
+          </div>
+          <textarea
+            value={event} onChange={e => setEvent(e.target.value)}
+            placeholder="Внешнее событие — кратко"
+            rows={2}
             style={{
-              width: 26, height: 26,
-              borderRadius: "50%",
-              background: dotBg,
-              border: `1.5px solid ${dotBorder}`,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: 10,
-              fontWeight: 800,
-              color: (isDone || isToday) ? "#fff" : C.textDim,
-              cursor: d.isRest ? "default" : "pointer",
-              flex: "0 0 auto"
+              width: "100%", padding: SP.sm, border: `1px solid ${C.border}`,
+              borderRadius: 6, fontSize: 14, background: C.bg, outline: "none", marginBottom: SP.md,
+            }}
+          />
+          <div style={{fontSize: 11, fontWeight: 800, letterSpacing: 1.5, color: C.accent, marginBottom: SP.xs}}>
+            ЧТО ОТЗЕРКАЛИЛО
+          </div>
+          <textarea
+            value={reflection} onChange={e => setReflection(e.target.value)}
+            placeholder="Какое моё внутреннее состояние / убеждение это отражает (опционально)"
+            rows={2}
+            style={{
+              width: "100%", padding: SP.sm, border: `1px solid ${C.border}`,
+              borderRadius: 6, fontSize: 14, background: C.bg, outline: "none", marginBottom: SP.md,
+            }}
+          />
+          {goals.length > 0 && (
+            <>
+              <div style={{fontSize: 11, fontWeight: 800, letterSpacing: 1.5, color: C.textDim, marginBottom: SP.xs}}>
+                ПРИВЯЗКА К ЦЕЛИ (необязательно)
+              </div>
+              <div style={{display: "flex", gap: 4, flexWrap: "wrap", marginBottom: SP.md}}>
+                <button onClick={() => setGoalId("")} style={{
+                  padding: "5px 10px", fontSize: 12, fontWeight: 700,
+                  background: !goalId ? C.text : "transparent", color: !goalId ? C.bg : C.textDim,
+                  border: `1px solid ${!goalId ? C.text : C.border}`, borderRadius: 14,
+                }}>—</button>
+                {goals.map((g, i) => (
+                  <button key={g.id} onClick={() => setGoalId(g.id)} style={{
+                    padding: "5px 10px", fontSize: 12, fontWeight: 700,
+                    background: goalId === g.id ? C.accent : "transparent",
+                    color: goalId === g.id ? "#FFF" : C.textDim,
+                    border: `1px solid ${goalId === g.id ? C.accent : C.border}`, borderRadius: 14,
+                  }}>цель {i+1}</button>
+                ))}
+              </div>
+            </>
+          )}
+          <Btn onClick={submit} variant="primary" full disabled={!event.trim()}>
+            Зафиксировать
+          </Btn>
+        </div>
+      </div>
+
+      <div style={{padding: `0 ${SP.xl}px ${SP.xxxl}px`}}>
+        {echoes.length === 0 ? (
+          <div style={{padding: SP.xl, textAlign: "center", color: C.textDim, fontSize: 13}}>
+            Лог пуст. Замечай мелкие отражения — они и есть язык матрицы.
+          </div>
+        ) : echoes.map(e => {
+          const goal = goals.find(g => g.id === e.goalId);
+          return (
+            <div key={e.id} style={{
+              padding: `${SP.md}px 0`, borderBottom: `1px solid ${C.borderSoft}`,
             }}>
-            {d.letter}
-          </button>
-        );
-      })}
+              <div style={{fontSize: 11, color: C.textDim, fontWeight: 700, letterSpacing: 0.5, display: "flex", gap: SP.sm}}>
+                <span>{fmtDate(e.dateISO)}</span>
+                {goal && <span style={{color: C.accent}}>· цель: {goal.text.slice(0, 30)}{goal.text.length > 30 ? "…" : ""}</span>}
+              </div>
+              <div style={{fontSize: 14, color: C.text, marginTop: 4, lineHeight: 1.4}}>
+                {e.event}
+              </div>
+              {e.reflection && (
+                <div style={{fontSize: 13, color: C.accent, marginTop: 4, lineHeight: 1.4, fontStyle: "italic"}}>
+                  → {e.reflection}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
 
-// ═══ TOP BAR ═══════════════════════════════════════════════════════════════
-function TopBar({ onBack, title }) {
+// ═══ SETTINGS ════════════════════════════════════════════════════════════════
+function SettingsView({ state, onBack, onImport, onReset }) {
+  const fileRef = useRef();
+
+  const exportJSON = () => {
+    const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `matrix-protocol-${todayISO()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const importJSON = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(reader.result);
+        if (parsed && typeof parsed === "object" && "v" in parsed) {
+          if (confirm("Заменить текущие данные импортированными? Это нельзя отменить.")) {
+            onImport(parsed);
+          }
+        } else {
+          alert("Файл не похож на бэкап matrix-protocol.");
+        }
+      } catch {
+        alert("Не удалось разобрать файл.");
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const reset = () => {
+    if (confirm("Стереть все данные? Восстановить будет нельзя — экспортируй сначала.")) {
+      if (confirm("Точно? Это последнее предупреждение.")) {
+        onReset();
+      }
+    }
+  };
+
   return (
-    <div style={{
-      display: "flex",
-      alignItems: "center",
-      padding: `${SP.md}px ${SP.xl}px`,
-      gap: SP.md
-    }}>
-      <button onClick={onBack} style={{
-        width: 36, height: 36,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        background: "transparent",
-        color: C.text
-      }}>
-        <Icon name="back" size={20}/>
-      </button>
-      {title && (
-        <div style={{
-          fontSize: 11,
-          fontWeight: 800,
-          letterSpacing: 1.5,
-          color: C.textDim
-        }}>
-          {title}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ═══ START SCREEN ═════════════════════════════════════════════════════════
-function Start({ onStart }) {
-  const today = new Date().toISOString().split("T")[0];
-  const [date, setDate] = useState(today);
-
-  return (
-    <div style={{
-      minHeight: "100vh",
-      background: C.bg,
-      display: "flex",
-      flexDirection: "column",
-      justifyContent: "space-between",
-      padding: `${SP.xxxl}px ${SP.xl}px`,
-      boxSizing: "border-box"
-    }}>
-      <div>
-        <div style={{
-          width: 44, height: 44,
-          background: C.text,
-          display: "flex", alignItems: "center", justifyContent: "center",
-          borderRadius: 10,
-          marginBottom: SP.xxl
-        }}>
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={C.bg} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M6.5 6.5h11v11h-11z"/>
-            <path d="M6.5 6.5L3 3m14.5 3.5L21 3m-14.5 14.5L3 21m14.5-3.5L21 21"/>
-          </svg>
-        </div>
-
-        <h1 className="tbig" style={{
-          fontSize: 64,
-          color: C.text,
-          margin: 0,
-          lineHeight: 0.85
-        }}>
-          IRON<br/>
-          <span style={{color: C.accent}}>PROTOCOL</span>
+    <div style={sc}>
+      <TopBar onBack={onBack}/>
+      <div style={{padding: `${SP.lg}px ${SP.xl}px ${SP.xxxl}px`, maxWidth: 480, margin: "0 auto"}}>
+        <h1 className="tbig" style={{fontSize: 44, color: C.text, margin: 0, textTransform: "uppercase", marginBottom: SP.xl}}>
+          НАСТРОЙКИ
         </h1>
 
-        <div style={{
-          fontSize: 14,
-          color: C.textDim,
-          marginTop: SP.lg,
-          fontWeight: 500,
-          lineHeight: 1.5,
-          maxWidth: 280
-        }}>
-          10 недель · 6 дней · возврат к PR. Evidence-based. Под Elevate Gym.
-        </div>
-      </div>
+        <div style={{marginBottom: SP.xl}}>
+          <div style={{fontSize: 11, fontWeight: 800, letterSpacing: 1.5, color: C.textDim, marginBottom: SP.md}}>
+            ДАННЫЕ
+          </div>
+          <button onClick={exportJSON} style={{
+            width: "100%", padding: SP.md,
+            background: C.card, border: `1px solid ${C.border}`, borderRadius: 10,
+            display: "flex", alignItems: "center", gap: SP.md, marginBottom: SP.sm,
+          }}>
+            <Icon name="download" size={18} color={C.text}/>
+            <div style={{fontSize: 14, fontWeight: 700, color: C.text}}>Экспорт JSON</div>
+          </button>
 
-      <div>
-        <div style={{
-          fontSize: 11,
-          fontWeight: 700,
-          color: C.textDim,
-          marginBottom: SP.sm,
-          textTransform: "uppercase",
-          letterSpacing: 1.5
-        }}>
-          Дата старта
+          <button onClick={() => fileRef.current?.click()} style={{
+            width: "100%", padding: SP.md,
+            background: C.card, border: `1px solid ${C.border}`, borderRadius: 10,
+            display: "flex", alignItems: "center", gap: SP.md, marginBottom: SP.sm,
+          }}>
+            <Icon name="upload" size={18} color={C.text}/>
+            <div style={{fontSize: 14, fontWeight: 700, color: C.text}}>Импорт JSON</div>
+          </button>
+          <input ref={fileRef} type="file" accept="application/json" onChange={importJSON} style={{display: "none"}}/>
+
+          <button onClick={reset} style={{
+            width: "100%", padding: SP.md,
+            background: C.card, border: `1px solid ${C.alert}`, borderRadius: 10,
+            display: "flex", alignItems: "center", gap: SP.md,
+          }}>
+            <Icon name="trash" size={18} color={C.alert}/>
+            <div style={{fontSize: 14, fontWeight: 700, color: C.alert}}>Сбросить всё</div>
+          </button>
         </div>
-        <input type="date" value={date} onChange={e => setDate(e.target.value)}
-          style={{
-            width: "100%",
-            background: "transparent",
-            border: "none",
-            borderBottom: `2px solid ${C.text}`,
-            color: C.text,
-            padding: "12px 0",
-            fontSize: 20,
-            fontWeight: 700,
-            marginBottom: SP.xxl,
-            fontVariantNumeric: "tabular-nums",
-            outline: "none"
-          }}/>
-        <button onClick={() => onStart(date)} style={{
-          width: "100%",
-          background: C.text,
-          color: C.bg,
-          padding: "20px",
-          fontSize: 15,
-          fontWeight: 800,
-          letterSpacing: 2,
-          textTransform: "uppercase",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: SP.sm,
-          borderRadius: 2
+
+        <div style={{marginBottom: SP.xl}}>
+          <div style={{fontSize: 11, fontWeight: 800, letterSpacing: 1.5, color: C.textDim, marginBottom: SP.md}}>
+            СТАТИСТИКА
+          </div>
+          <Stat label="Дней с начала" value={Math.floor((Date.now() - new Date(state.startDate)) / 86400000) + 1}/>
+          <Stat label="Ключей пройдено" value={`${Object.keys(state.curriculum).length}/20`}/>
+          <Stat label="Циклов «Свершения»" value={state.completion.length}/>
+          <Stat label="Записей в Зеркале" value={state.mirrors.length}/>
+          <Stat label="Записей в Эхо" value={state.echoes.length}/>
+        </div>
+
+        <div style={{
+          padding: SP.lg, background: C.accentSoft, borderRadius: 10,
+          fontSize: 12, color: C.text, lineHeight: 1.5,
         }}>
-          Начать
-          <Icon name="chevron" size={16} color={C.bg} stroke={2.5}/>
-        </button>
+          <b style={{color: C.accent, fontSize: 11, letterSpacing: 1.5, textTransform: "uppercase", display: "block", marginBottom: 4}}>
+            Напоминание
+          </b>
+          Это псевдонаучная рамка. Работает не «материализация», а структурированная работа с убеждениями и эмоциями. Внешние результаты — следствие изменения поведения, не «настройки поля».
+        </div>
       </div>
     </div>
   );
 }
 
-const sc = {
-  maxWidth: 480,
-  margin: "0 auto",
-  background: C.bg,
-  minHeight: "100vh",
-  color: C.text
-};
+function Stat({ label, value }) {
+  return (
+    <div style={{
+      display: "flex", justifyContent: "space-between",
+      padding: `${SP.sm}px 0`, borderBottom: `1px solid ${C.borderSoft}`,
+    }}>
+      <div style={{fontSize: 13, color: C.textDim}}>{label}</div>
+      <div style={{fontSize: 13, fontWeight: 700, color: C.text, fontVariantNumeric: "tabular-nums"}}>{value}</div>
+    </div>
+  );
+}
 
-ReactDOM.render(<App/>, document.getElementById("root"));
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
 </script>
 </body>
 </html>

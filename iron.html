@@ -1,0 +1,1496 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>IRON Protocol</title>
+
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="IRON">
+<meta name="theme-color" content="#EFEBE4">
+<link rel="manifest" href="iron-manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="apple-touch-icon" sizes="180x180" href="icon-180.png">
+<link rel="apple-touch-icon" sizes="192x192" href="icon-192.png">
+
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; }
+  html, body {
+    background: #EFEBE4;
+    color: #0A0A0A;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', 'Helvetica Neue', Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow-x: hidden;
+    line-height: 1.3;
+    font-size: 15px;
+  }
+  body {
+    min-height: 100vh;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  button { font-family: inherit; border: none; cursor: pointer; background: none; color: inherit; font-size: inherit; }
+  input { font-family: inherit; font-size: inherit; color: inherit; }
+  h1, h2, h3 { font-weight: 900; letter-spacing: -0.04em; }
+  ::-webkit-scrollbar { display: none; }
+  input[type="date"] { -webkit-appearance: none; appearance: none; min-height: 48px; }
+  input[type="number"] { -webkit-appearance: none; appearance: none; }
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+  .tbig {
+    font-weight: 900;
+    letter-spacing: -0.05em;
+    line-height: 0.9;
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+// ═══ DESIGN TOKENS ══════════════════════════════════════════════════════════
+const C = {
+  bg: "#EFEBE4",
+  bgSoft: "#E5E1DA",
+  card: "#FFFFFF",
+  text: "#0A0A0A",
+  textDim: "#6B6661",
+  textSoft: "#A8A39D",
+  border: "#D8D3CB",
+  accent: "#FF5C1F",
+  accentSoft: "#FFE4D6",
+  done: "#0A0A0A",
+  rest: "#2E7D4F",
+  restSoft: "#DCE8DF",
+};
+
+const SP = { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32 };
+
+const storage = {
+  get: (k) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; } catch { return null; } },
+  set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+};
+
+// ═══ 10-WEEK EVIDENCE-BASED PROGRAM ═════════════════════════════════════════
+// 6 days/week (Mon-Sat) + Sun rest
+// Mon = Lower Power (Squat)
+// Tue = Upper Press (Bench + OHP)
+// Wed = Lower Hinge (Deadlift)
+// Thu = Upper Pull (Rows + Pull-ups)
+// Fri = Lower Volume/Unilateral (light; Zercher from W6)
+// Sat = Upper Volume + Arms
+
+const PHASES = [
+  { name: "МЕЗО 1 · НАКОПЛЕНИЕ", short: "ACC", weeks: [1,2,3,4],
+    desc: "CSA + нейронный драйв. Zercher НЕ вводится. Объём MEV→MAV, RPE 6→8." },
+  { name: "ДЕЛОАД", short: "DEL", weeks: [5],
+    desc: "7-дневный деолоад. 50% объёма, 70% нагрузки, та же частота. Никаких AMRAP." },
+  { name: "МЕЗО 2 · ИНТЕНСИФИКАЦИЯ", short: "INT", weeks: [6,7,8],
+    desc: "Возврат и превышение пред-брейк 1ПМ. Zercher вводится как T2 на Fri с W6." },
+  { name: "ТЕЙПЕР", short: "TAP", weeks: [9],
+    desc: "Объём −50%, интенсивность держим. Heavy singles RPE 8, без новых вариаций." },
+  { name: "ТЕСТ 1ПМ", short: "TEST", weeks: [10],
+    desc: "4 лифта распределены: Mon Squat, Wed Bench, Fri Deadlift, Sat OHP + Zercher." },
+];
+
+const getPhase = (w) => PHASES.find(p => p.weeks.includes(w)) || PHASES[0];
+
+const DAY_NAMES_FULL = ["ВОСКРЕСЕНЬЕ","ПОНЕДЕЛЬНИК","ВТОРНИК","СРЕДА","ЧЕТВЕРГ","ПЯТНИЦА","СУББОТА"];
+const DAY_NAMES_SHORT = ["ВС","ПН","ВТ","СР","ЧТ","ПТ","СБ"];
+const MONTHS_RU = ["января","февраля","марта","апреля","мая","июня","июля","августа","сентября","октября","ноября","декабря"];
+
+// Training day slot → dayOfWeek (Mon=1, Tue=2, Wed=3, Thu=4, Fri=5, Sat=6)
+const SLOT_TO_DOW = [1, 2, 3, 4, 5, 6];
+
+function buildProgram() {
+  const W = {};
+
+  // ═══ WEEK 1 — baseline, RPE 6, ~60-62% TM ═══════════════════════════════
+  W[1] = { days: [
+    // Mon — Lower Power
+    { name: "LOWER POWER", ex: [
+      { id:"w1d1e1", t:"T1", n:"Back Squat (штанга)", s:"4×5", r:"6", note:"60% TM" },
+      { id:"w1d1e2", t:"T2", n:"Paused High-Bar Squat", s:"3×6", r:"6", note:"55% TM · tempo 3-1-1" },
+      { id:"w1d1e3", t:"T3", n:"Bulgarian Split Squat (DB 2×15)", s:"3×10/ногу", r:"7" },
+      { id:"w1d1e4", t:"T3", n:"Leg Extension", s:"3×12", r:"7" },
+      { id:"w1d1e5", t:"T3", n:"Standing Calf Raise (KB)", s:"3×15", r:"7" },
+      { id:"w1d1e6", t:"T3", n:"Plank", s:"3×45 сек", r:"7" },
+    ]},
+    // Tue — Upper Press
+    { name: "UPPER PRESS", ex: [
+      { id:"w1d2e1", t:"T1", n:"Bench Press (штанга)", s:"4×6", r:"6", note:"62% TM" },
+      { id:"w1d2e2", t:"T1", n:"OHP (штанга)", s:"4×6", r:"6", note:"60% TM" },
+      { id:"w1d2e3", t:"T3", n:"DB Incline Press (2×17.5)", s:"3×10", r:"7" },
+      { id:"w1d2e4", t:"T3", n:"Lateral Raise (DB)", s:"3×12", r:"7" },
+      { id:"w1d2e5", t:"T3", n:"Triceps Pushdown (rope)", s:"3×12", r:"7" },
+      { id:"w1d2e6", t:"T3", n:"Опц: AirBike 8×20/40с", s:"≥6ч после лифта", r:"7" },
+    ]},
+    // Wed — Lower Hinge
+    { name: "LOWER HINGE", ex: [
+      { id:"w1d3e1", t:"T1", n:"Conventional Deadlift", s:"4×4", r:"6", note:"60% TM" },
+      { id:"w1d3e2", t:"T2", n:"Romanian Deadlift (RDL)", s:"3×8", r:"6", note:"55%" },
+      { id:"w1d3e3", t:"T3", n:"45° Back Extension (GHD, BW)", s:"3×12", r:"7" },
+      { id:"w1d3e4", t:"T3", n:"Leg Curl", s:"3×12", r:"7" },
+      { id:"w1d3e5", t:"T3", n:"Seated Calf Raise (DB)", s:"3×15", r:"7" },
+      { id:"w1d3e6", t:"T3", n:"Hanging Knee Raise", s:"3×10", r:"7" },
+    ]},
+    // Thu — Upper Pull
+    { name: "UPPER PULL", ex: [
+      { id:"w1d4e1", t:"T1", n:"Pendlay Row (штанга)", s:"4×6", r:"6" },
+      { id:"w1d4e2", t:"T1", n:"Weighted Pull-up (пояс)", s:"4×5", r:"6" },
+      { id:"w1d4e3", t:"T3", n:"Chest-Supported DB Row (2×20)", s:"3×12", r:"7" },
+      { id:"w1d4e4", t:"T3", n:"Face Pull (кабель, rope)", s:"3×15", r:"7" },
+      { id:"w1d4e5", t:"T3", n:"Incline DB Curl (2×12.5)", s:"3×10", r:"7" },
+      { id:"w1d4e6", t:"T3", n:"C2 Rower 5×250м", s:"RPE 7, отдых 1:1", r:"7" },
+    ]},
+    // Fri — Lower Volume / Unilateral (NO Zercher yet)
+    { name: "LOWER PUMP · БЕЗ ZERCHER", ex: [
+      { id:"w1d5e1", t:"T1", n:"Front Squat (темпо 3-0-1)", s:"3×6", r:"6", note:"50% FS TM" },
+      { id:"w1d5e2", t:"T2", n:"Bulgarian Split Squat (DB 2×17.5)", s:"4×10/ногу", r:"7" },
+      { id:"w1d5e3", t:"T3", n:"GHR (GHD, BW)", s:"3×8", r:"7" },
+      { id:"w1d5e4", t:"T3", n:"Reverse Hyper (GHD, BW)", s:"3×15", r:"7" },
+      { id:"w1d5e5", t:"T3", n:"Heel-Elev. Goblet Squat (KB 24)", s:"3×15", r:"7" },
+    ]},
+    // Sat — Upper Volume + Arms
+    { name: "UPPER VOLUME + ARMS", ex: [
+      { id:"w1d6e1", t:"T1", n:"Close-Grip Bench Press", s:"4×8", r:"6" },
+      { id:"w1d6e2", t:"T2", n:"Seated DB OHP (2×15)", s:"3×10", r:"7" },
+      { id:"w1d6e3", t:"T3", n:"Ring Push-up", s:"3×AMRAP-2", r:"7" },
+      { id:"w1d6e4", t:"T3", n:"Cable Crossover (одной рукой)", s:"3×12/рука", r:"7" },
+      { id:"w1d6e5", t:"T3", n:"Spider Curl (DB 2×10)", s:"3×12", r:"7" },
+      { id:"w1d6e6", t:"T3", n:"Overhead Triceps Ext. (KB)", s:"3×12", r:"7" },
+    ]},
+  ]};
+
+  // ═══ WEEK 2 — RPE 7, +2.5 верх / +5 низ, +1 сет T1 ═══════════════════════
+  W[2] = { days: [
+    { name: "LOWER POWER", ex: [
+      { id:"w2d1e1", t:"T1", n:"Back Squat", s:"5×5", r:"7", note:"65% TM" },
+      { id:"w2d1e2", t:"T2", n:"Paused High-Bar Squat", s:"4×6", r:"7", note:"57% · 3-1-1" },
+      { id:"w2d1e3", t:"T3", n:"Bulgarian Split Squat (DB 2×17.5)", s:"3×10/ногу", r:"7" },
+      { id:"w2d1e4", t:"T3", n:"Leg Extension", s:"3×12", r:"7" },
+      { id:"w2d1e5", t:"T3", n:"Standing Calf Raise", s:"3×15", r:"7" },
+      { id:"w2d1e6", t:"T3", n:"Plank", s:"3×60 сек", r:"7" },
+    ]},
+    { name: "UPPER PRESS", ex: [
+      { id:"w2d2e1", t:"T1", n:"Bench Press", s:"5×6", r:"7", note:"65% TM" },
+      { id:"w2d2e2", t:"T1", n:"OHP", s:"5×6", r:"7", note:"62% TM" },
+      { id:"w2d2e3", t:"T3", n:"DB Incline Press (2×20)", s:"3×10", r:"7" },
+      { id:"w2d2e4", t:"T3", n:"Lateral Raise", s:"4×12", r:"7" },
+      { id:"w2d2e5", t:"T3", n:"Triceps Pushdown", s:"3×12", r:"7" },
+    ]},
+    { name: "LOWER HINGE", ex: [
+      { id:"w2d3e1", t:"T1", n:"Conventional Deadlift", s:"5×4", r:"7", note:"65% TM" },
+      { id:"w2d3e2", t:"T2", n:"RDL", s:"4×8", r:"7" },
+      { id:"w2d3e3", t:"T3", n:"45° Back Ext. (GHD + 10кг)", s:"3×12", r:"7" },
+      { id:"w2d3e4", t:"T3", n:"Leg Curl", s:"3×12", r:"7" },
+      { id:"w2d3e5", t:"T3", n:"Hanging Knee Raise", s:"3×12", r:"7" },
+    ]},
+    { name: "UPPER PULL", ex: [
+      { id:"w2d4e1", t:"T1", n:"Pendlay Row", s:"5×6", r:"7" },
+      { id:"w2d4e2", t:"T1", n:"Weighted Pull-up (+2.5кг)", s:"4×5", r:"7" },
+      { id:"w2d4e3", t:"T3", n:"Chest-Supported DB Row (2×22.5)", s:"3×12", r:"7" },
+      { id:"w2d4e4", t:"T3", n:"Face Pull", s:"3×15", r:"7" },
+      { id:"w2d4e5", t:"T3", n:"Incline DB Curl", s:"3×12", r:"7" },
+      { id:"w2d4e6", t:"T3", n:"C2 Rower 5×500м", s:"RPE 7", r:"7" },
+    ]},
+    { name: "LOWER PUMP · БЕЗ ZERCHER", ex: [
+      { id:"w2d5e1", t:"T1", n:"Front Squat", s:"4×6", r:"6-7", note:"55% FS TM" },
+      { id:"w2d5e2", t:"T2", n:"Bulgarian Split Squat (DB 2×20)", s:"4×10/ногу", r:"7" },
+      { id:"w2d5e3", t:"T3", n:"GHR", s:"3×10", r:"7" },
+      { id:"w2d5e4", t:"T3", n:"Reverse Hyper", s:"3×15", r:"7" },
+      { id:"w2d5e5", t:"T3", n:"Goblet Squat (KB 28)", s:"3×15", r:"7" },
+    ]},
+    { name: "UPPER VOLUME + ARMS", ex: [
+      { id:"w2d6e1", t:"T1", n:"Close-Grip Bench", s:"4×8", r:"7" },
+      { id:"w2d6e2", t:"T2", n:"Seated DB OHP (2×17.5)", s:"3×10", r:"7" },
+      { id:"w2d6e3", t:"T3", n:"Ring Push-up", s:"3×AMRAP-2", r:"7" },
+      { id:"w2d6e4", t:"T3", n:"Cable Crossover", s:"3×12/рука", r:"7" },
+      { id:"w2d6e5", t:"T3", n:"Spider Curl", s:"3×12", r:"7" },
+      { id:"w2d6e6", t:"T3", n:"OH Triceps Extension", s:"3×12", r:"7" },
+    ]},
+  ]};
+
+  // ═══ WEEK 3 — RPE 8, 72-75% TM ═══════════════════════════════════════
+  W[3] = { days: [
+    { name: "LOWER POWER", ex: [
+      { id:"w3d1e1", t:"T1", n:"Back Squat", s:"4×5", r:"8", note:"72% TM" },
+      { id:"w3d1e2", t:"T2", n:"Paused High-Bar Squat", s:"4×5", r:"7-8", note:"65%" },
+      { id:"w3d1e3", t:"T3", n:"Bulgarian Split Squat (DB 2×22.5)", s:"4×10/ногу", r:"7-8" },
+      { id:"w3d1e4", t:"T3", n:"Leg Extension", s:"3×15", r:"8" },
+      { id:"w3d1e5", t:"T3", n:"Standing Calf Raise", s:"4×15", r:"8" },
+      { id:"w3d1e6", t:"T3", n:"Ab Wheel", s:"3×10", r:"7" },
+    ]},
+    { name: "UPPER PRESS", ex: [
+      { id:"w3d2e1", t:"T1", n:"Bench Press", s:"4×5", r:"8", note:"72% TM" },
+      { id:"w3d2e2", t:"T1", n:"OHP", s:"4×5", r:"8", note:"70% TM" },
+      { id:"w3d2e3", t:"T3", n:"DB Incline Press (2×22.5)", s:"4×10", r:"7-8" },
+      { id:"w3d2e4", t:"T3", n:"Lateral Raise", s:"4×15", r:"7" },
+      { id:"w3d2e5", t:"T3", n:"Triceps Pushdown", s:"3×12", r:"7-8" },
+    ]},
+    { name: "LOWER HINGE", ex: [
+      { id:"w3d3e1", t:"T1", n:"Conventional Deadlift", s:"4×3", r:"8", note:"72% TM" },
+      { id:"w3d3e2", t:"T2", n:"RDL", s:"4×8", r:"7-8" },
+      { id:"w3d3e3", t:"T3", n:"45° Back Ext. (+15кг)", s:"3×12", r:"7-8" },
+      { id:"w3d3e4", t:"T3", n:"Leg Curl", s:"4×12", r:"7-8" },
+      { id:"w3d3e5", t:"T3", n:"Hanging Knee Raise", s:"3×12", r:"7" },
+    ]},
+    { name: "UPPER PULL", ex: [
+      { id:"w3d4e1", t:"T1", n:"Pendlay Row", s:"4×5", r:"8" },
+      { id:"w3d4e2", t:"T1", n:"Weighted Pull-up (+5кг)", s:"4×5", r:"8" },
+      { id:"w3d4e3", t:"T3", n:"Chest-Supported DB Row (2×25)", s:"4×12", r:"7-8" },
+      { id:"w3d4e4", t:"T3", n:"Face Pull", s:"4×15", r:"7" },
+      { id:"w3d4e5", t:"T3", n:"Incline DB Curl", s:"3×12", r:"7-8" },
+    ]},
+    { name: "LOWER PUMP · БЕЗ ZERCHER", ex: [
+      { id:"w3d5e1", t:"T1", n:"Front Squat", s:"4×5", r:"7", note:"60% FS TM" },
+      { id:"w3d5e2", t:"T2", n:"Bulgarian Split Squat (DB 2×22.5)", s:"4×10/ногу", r:"7-8" },
+      { id:"w3d5e3", t:"T3", n:"GHR", s:"4×8", r:"7-8" },
+      { id:"w3d5e4", t:"T3", n:"Reverse Hyper", s:"3×15", r:"7" },
+      { id:"w3d5e5", t:"T3", n:"Sled Push (light)", s:"4×20м", r:"7" },
+    ]},
+    { name: "UPPER VOLUME + ARMS", ex: [
+      { id:"w3d6e1", t:"T1", n:"Close-Grip Bench", s:"5×5", r:"8" },
+      { id:"w3d6e2", t:"T2", n:"Seated DB OHP (2×20)", s:"4×8", r:"7-8" },
+      { id:"w3d6e3", t:"T3", n:"Ring Push-up (с весом если легко)", s:"4×AMRAP-2", r:"7" },
+      { id:"w3d6e4", t:"T3", n:"Cable Crossover", s:"4×12/рука", r:"7" },
+      { id:"w3d6e5", t:"T3", n:"Spider Curl", s:"3×12", r:"7-8" },
+      { id:"w3d6e6", t:"T3", n:"OH Triceps Ext.", s:"3×12", r:"7-8" },
+    ]},
+  ]};
+
+  // ═══ WEEK 4 — RPE 8.5, 77-80% TM, MAV peak ═══════════════════════════
+  W[4] = { days: [
+    { name: "LOWER POWER · MAV", ex: [
+      { id:"w4d1e1", t:"T1", n:"Back Squat", s:"3×4", r:"8.5", note:"78% TM + back-off 2×6 @ 65%" },
+      { id:"w4d1e2", t:"T2", n:"Paused High-Bar Squat", s:"3×5", r:"8", note:"68%" },
+      { id:"w4d1e3", t:"T3", n:"Bulgarian Split Squat", s:"4×8/ногу", r:"8" },
+      { id:"w4d1e4", t:"T3", n:"Leg Extension", s:"3×15", r:"8" },
+      { id:"w4d1e5", t:"T3", n:"Ab Wheel", s:"3×12", r:"7" },
+    ]},
+    { name: "UPPER PRESS · MAV", ex: [
+      { id:"w4d2e1", t:"T1", n:"Bench Press", s:"3×4", r:"8.5", note:"78% + back-off 2×6 @ 65%" },
+      { id:"w4d2e2", t:"T1", n:"OHP", s:"3×4", r:"8", note:"75%" },
+      { id:"w4d2e3", t:"T3", n:"DB Incline Press (2×25 если хватает)", s:"4×10", r:"8" },
+      { id:"w4d2e4", t:"T3", n:"Lateral Raise", s:"4×15", r:"7" },
+      { id:"w4d2e5", t:"T3", n:"Triceps Pushdown", s:"3×12", r:"8" },
+    ]},
+    { name: "LOWER HINGE · MAV", ex: [
+      { id:"w4d3e1", t:"T1", n:"Conventional Deadlift", s:"3×3", r:"8.5", note:"78% TM · 2 в запасе" },
+      { id:"w4d3e2", t:"T2", n:"RDL", s:"4×6", r:"8" },
+      { id:"w4d3e3", t:"T3", n:"45° Back Ext. (+20кг)", s:"3×12", r:"8" },
+      { id:"w4d3e4", t:"T3", n:"Leg Curl", s:"3×12", r:"8" },
+      { id:"w4d3e5", t:"T3", n:"Hanging Knee Raise", s:"3×15", r:"7" },
+    ]},
+    { name: "UPPER PULL · MAV", ex: [
+      { id:"w4d4e1", t:"T1", n:"Pendlay Row", s:"4×4", r:"8" },
+      { id:"w4d4e2", t:"T1", n:"Weighted Pull-up (+7.5кг)", s:"4×4", r:"8" },
+      { id:"w4d4e3", t:"T3", n:"Chest-Supported DB Row", s:"4×10", r:"8" },
+      { id:"w4d4e4", t:"T3", n:"Face Pull", s:"3×15", r:"7" },
+      { id:"w4d4e5", t:"T3", n:"Incline DB Curl", s:"3×12", r:"8" },
+    ]},
+    { name: "LOWER PUMP · БЕЗ ZERCHER", ex: [
+      { id:"w4d5e1", t:"T1", n:"Front Squat", s:"3×5", r:"7", note:"65% FS TM · НЕ третий тяжёлый!" },
+      { id:"w4d5e2", t:"T2", n:"Bulgarian Split Squat", s:"3×10/ногу", r:"7-8" },
+      { id:"w4d5e3", t:"T3", n:"GHR", s:"3×10", r:"8" },
+      { id:"w4d5e4", t:"T3", n:"Reverse Hyper", s:"3×15", r:"7" },
+    ]},
+    { name: "UPPER VOLUME + ARMS", ex: [
+      { id:"w4d6e1", t:"T1", n:"Close-Grip Bench", s:"4×6", r:"8" },
+      { id:"w4d6e2", t:"T2", n:"Seated DB OHP (2×22.5)", s:"4×8", r:"8" },
+      { id:"w4d6e3", t:"T3", n:"Ring Dip (если готов, иначе Ring Push-up)", s:"3×8", r:"7" },
+      { id:"w4d6e4", t:"T3", n:"Cable Crossover", s:"4×12/рука", r:"7" },
+      { id:"w4d6e5", t:"T3", n:"Spider Curl", s:"3×12", r:"8" },
+      { id:"w4d6e6", t:"T3", n:"OH Triceps Ext.", s:"3×12", r:"8" },
+    ]},
+  ]};
+
+  // ═══ WEEK 5 — FULL 7-DAY DELOAD — 50% объёма, 70% нагрузки ══════════════
+  W[5] = { days: [
+    { name: "DELOAD · LIGHT SQUAT", ex: [
+      { id:"w5d1e1", t:"T1", n:"Back Squat", s:"3×5", r:"5", note:"55% TM" },
+      { id:"w5d1e2", t:"T3", n:"Bulgarian Split Squat (light)", s:"2×10/ногу", r:"5" },
+      { id:"w5d1e3", t:"T3", n:"Мобильность 10 мин", s:"", r:"" },
+    ]},
+    { name: "DELOAD · LIGHT PRESS", ex: [
+      { id:"w5d2e1", t:"T1", n:"Bench Press", s:"3×5", r:"5", note:"55% TM" },
+      { id:"w5d2e2", t:"T1", n:"OHP", s:"3×5", r:"5", note:"55% TM" },
+      { id:"w5d2e3", t:"T3", n:"Face Pull", s:"3×15", r:"5" },
+      { id:"w5d2e4", t:"T3", n:"AirBike Z2 10 мин", s:"лёгкий темп", r:"5" },
+    ]},
+    { name: "DELOAD · LIGHT DL", ex: [
+      { id:"w5d3e1", t:"T1", n:"Conventional Deadlift", s:"3×3", r:"5", note:"55% TM" },
+      { id:"w5d3e2", t:"T3", n:"RDL (light)", s:"2×8", r:"5" },
+      { id:"w5d3e3", t:"T3", n:"C2 Row Z2 10 мин", s:"лёгкий темп", r:"5" },
+    ]},
+    { name: "DELOAD · LIGHT UPPER", ex: [
+      { id:"w5d4e1", t:"T1", n:"Bench Press", s:"3×5", r:"5", note:"55% TM" },
+      { id:"w5d4e2", t:"T1", n:"Pull-up (BW, не AMRAP)", s:"3×3", r:"5" },
+      { id:"w5d4e3", t:"T3", n:"Face Pull", s:"3×15", r:"5" },
+    ]},
+    { name: "REST · МОБИЛЬНОСТЬ", ex: [
+      { id:"w5d5e1", t:"T3", n:"Мобильность + растяжка 20 мин", s:"", r:"" },
+      { id:"w5d5e2", t:"T3", n:"Прогулка 30-40 мин", s:"", r:"" },
+    ]},
+    { name: "TECHNICAL · ВОЗВРАТ", ex: [
+      { id:"w5d6e1", t:"T3", n:"Front Squat (техника)", s:"3×3 @ 50% FS TM", r:"5" },
+      { id:"w5d6e2", t:"T3", n:"Ring Push-up", s:"2×10", r:"5" },
+      { id:"w5d6e3", t:"T3", n:"45° Back Extension (BW)", s:"2×10", r:"5" },
+    ]},
+  ]};
+
+  // ═══ WEEK 6 — RPE 7, 75% TM, ZERCHER ВВОДИТСЯ ═════════════════════════
+  W[6] = { days: [
+    { name: "LOWER POWER", ex: [
+      { id:"w6d1e1", t:"T1", n:"Back Squat", s:"5×3", r:"7", note:"75% TM" },
+      { id:"w6d1e2", t:"T2", n:"Pause Squat (2-сек в яме)", s:"3×5", r:"7", note:"70%" },
+      { id:"w6d1e3", t:"T3", n:"Bulgarian Split Squat (DB 2×25)", s:"3×10/ногу", r:"7-8" },
+      { id:"w6d1e4", t:"T3", n:"Leg Extension", s:"3×15", r:"8" },
+      { id:"w6d1e5", t:"T3", n:"Calf Raise", s:"3×15", r:"7" },
+    ]},
+    { name: "UPPER PRESS", ex: [
+      { id:"w6d2e1", t:"T1", n:"Bench Press", s:"5×3", r:"7", note:"75% TM" },
+      { id:"w6d2e2", t:"T1", n:"OHP", s:"4×5", r:"7", note:"70% TM" },
+      { id:"w6d2e3", t:"T3", n:"BB Incline (если DB 25 мало)", s:"4×8", r:"7-8" },
+      { id:"w6d2e4", t:"T3", n:"Lateral Raise", s:"3×15", r:"7" },
+      { id:"w6d2e5", t:"T3", n:"Triceps Pushdown", s:"3×12", r:"7-8" },
+      { id:"w6d2e6", t:"T3", n:"AirBike 10×20/40с", s:"≥6ч после", r:"7" },
+    ]},
+    { name: "LOWER HINGE", ex: [
+      { id:"w6d3e1", t:"T1", n:"Conventional Deadlift", s:"4×3", r:"7", note:"75% TM" },
+      { id:"w6d3e2", t:"T2", n:"Deficit DL (2.5см деф.)", s:"3×5", r:"7", note:"65%" },
+      { id:"w6d3e3", t:"T3", n:"45° Back Ext. (+15-20кг)", s:"3×12", r:"7-8" },
+      { id:"w6d3e4", t:"T3", n:"Leg Curl", s:"3×12", r:"7-8" },
+      { id:"w6d3e5", t:"T3", n:"Hanging Leg Raise", s:"3×10", r:"7" },
+    ]},
+    { name: "UPPER PULL", ex: [
+      { id:"w6d4e1", t:"T1", n:"Pendlay Row", s:"5×4", r:"7" },
+      { id:"w6d4e2", t:"T1", n:"Weighted Pull-up (+5-10кг)", s:"4×5", r:"7" },
+      { id:"w6d4e3", t:"T3", n:"Chest-Supported DB Row (2×25)", s:"3×12", r:"7-8" },
+      { id:"w6d4e4", t:"T3", n:"Face Pull", s:"3×15", r:"7" },
+      { id:"w6d4e5", t:"T3", n:"Incline DB Curl", s:"3×10", r:"7-8" },
+      { id:"w6d4e6", t:"T3", n:"C2 Row 5×500м", s:"RPE 8", r:"8" },
+    ]},
+    { name: "LOWER VOLUME · ZERCHER ⚡", ex: [
+      { id:"w6d5e1", t:"T2", n:"Zercher Squat (полотенце + рукав)", s:"3×8 @ 45-50кг", r:"6", note:"Темп 3-1-1 · ПЕРВАЯ экспозиция!" },
+      { id:"w6d5e2", t:"T3", n:"Bulgarian Split Squat", s:"3×12/ногу", r:"7-8" },
+      { id:"w6d5e3", t:"T3", n:"GHR", s:"3×8", r:"8" },
+      { id:"w6d5e4", t:"T3", n:"Reverse Hyper", s:"3×15", r:"7" },
+      { id:"w6d5e5", t:"T3", n:"Sled Push (heavy, 1.2×BW)", s:"5×20м", r:"8" },
+    ]},
+    { name: "UPPER VOLUME + ARMS", ex: [
+      { id:"w6d6e1", t:"T1", n:"Close-Grip Bench", s:"5×5", r:"7" },
+      { id:"w6d6e2", t:"T2", n:"Seated DB OHP (2×22.5)", s:"3×10", r:"7-8" },
+      { id:"w6d6e3", t:"T3", n:"Ring Dip", s:"3×6-10", r:"7" },
+      { id:"w6d6e4", t:"T3", n:"Cable Fly (одной рукой)", s:"3×12/рука", r:"7" },
+      { id:"w6d6e5", t:"T3", n:"Spider Curl", s:"3×12", r:"7-8" },
+      { id:"w6d6e6", t:"T3", n:"OH Triceps Ext.", s:"3×12", r:"7-8" },
+      { id:"w6d6e7", t:"T3", n:"Zottman Curl (DB)", s:"2×10", r:"7" },
+    ]},
+  ]};
+
+  // ═══ WEEK 7 — RPE 8, 77-80% TM ══════════════════════════════════════
+  W[7] = { days: [
+    { name: "LOWER POWER", ex: [
+      { id:"w7d1e1", t:"T1", n:"Back Squat", s:"4×3", r:"8", note:"80% TM + back-off 2×5 @ 70%" },
+      { id:"w7d1e2", t:"T2", n:"Pause Squat", s:"3×4", r:"8", note:"72%" },
+      { id:"w7d1e3", t:"T3", n:"Bulgarian Split Squat", s:"4×10/ногу", r:"8" },
+      { id:"w7d1e4", t:"T3", n:"Leg Extension", s:"3×15", r:"8" },
+      { id:"w7d1e5", t:"T3", n:"Ab Wheel", s:"3×12", r:"7" },
+    ]},
+    { name: "UPPER PRESS", ex: [
+      { id:"w7d2e1", t:"T1", n:"Bench Press", s:"4×3", r:"8", note:"80% TM + back-off 2×5 @ 70%" },
+      { id:"w7d2e2", t:"T1", n:"OHP", s:"4×4", r:"8", note:"75% TM" },
+      { id:"w7d2e3", t:"T3", n:"BB Incline Press", s:"4×8", r:"8" },
+      { id:"w7d2e4", t:"T3", n:"Lateral Raise", s:"4×15", r:"7-8" },
+      { id:"w7d2e5", t:"T3", n:"Triceps Pushdown", s:"3×12", r:"8" },
+    ]},
+    { name: "LOWER HINGE", ex: [
+      { id:"w7d3e1", t:"T1", n:"Conventional Deadlift", s:"3×3", r:"8", note:"80% TM" },
+      { id:"w7d3e2", t:"T2", n:"Deficit DL", s:"3×5", r:"7-8", note:"70%" },
+      { id:"w7d3e3", t:"T3", n:"45° Back Ext. (+20кг)", s:"3×12", r:"8" },
+      { id:"w7d3e4", t:"T3", n:"Leg Curl", s:"4×12", r:"8" },
+      { id:"w7d3e5", t:"T3", n:"Hanging Leg Raise", s:"3×12", r:"7" },
+    ]},
+    { name: "UPPER PULL", ex: [
+      { id:"w7d4e1", t:"T1", n:"Pendlay Row", s:"4×4", r:"8" },
+      { id:"w7d4e2", t:"T1", n:"Weighted Pull-up (+10кг)", s:"4×4", r:"8" },
+      { id:"w7d4e3", t:"T3", n:"Chest-Supported DB Row", s:"4×10", r:"8" },
+      { id:"w7d4e4", t:"T3", n:"Face Pull", s:"3×15", r:"7" },
+      { id:"w7d4e5", t:"T3", n:"Incline DB Curl", s:"3×10", r:"8" },
+    ]},
+    { name: "LOWER VOLUME · ZERCHER", ex: [
+      { id:"w7d5e1", t:"T2", n:"Zercher Squat", s:"4×6 @ 60-65кг", r:"7", note:"Темп 3-1-1 · проверь локоть 24ч!" },
+      { id:"w7d5e2", t:"T2", n:"Zercher Technical Top Single", s:"1×1 @ 70кг", r:"7" },
+      { id:"w7d5e3", t:"T3", n:"BSS", s:"4×8/ногу", r:"8" },
+      { id:"w7d5e4", t:"T3", n:"GHR", s:"3×10", r:"8" },
+      { id:"w7d5e5", t:"T3", n:"Sled Push", s:"4×25м", r:"8" },
+    ]},
+    { name: "UPPER VOLUME + ARMS", ex: [
+      { id:"w7d6e1", t:"T1", n:"Close-Grip Bench", s:"4×5", r:"8" },
+      { id:"w7d6e2", t:"T2", n:"Seated DB OHP", s:"3×10", r:"8" },
+      { id:"w7d6e3", t:"T3", n:"Ring Dip (+вес)", s:"3×8", r:"7-8" },
+      { id:"w7d6e4", t:"T3", n:"Cable Fly", s:"3×12/рука", r:"7" },
+      { id:"w7d6e5", t:"T3", n:"Spider Curl", s:"3×12", r:"8" },
+      { id:"w7d6e6", t:"T3", n:"OH Triceps Ext.", s:"3×12", r:"8" },
+    ]},
+  ]};
+
+  // ═══ WEEK 8 — RPE 8.5, 82-85% TM, ПИК ИНТЕНСИВНОСТИ ══════════════════
+  W[8] = { days: [
+    { name: "LOWER POWER · PEAK", ex: [
+      { id:"w8d1e1", t:"T1", n:"Back Squat", s:"4×2", r:"8.5", note:"85% TM + back-off 2×4 @ 75%" },
+      { id:"w8d1e2", t:"T2", n:"Pause Squat", s:"3×3", r:"8", note:"75%" },
+      { id:"w8d1e3", t:"T3", n:"BSS", s:"3×10/ногу", r:"8" },
+      { id:"w8d1e4", t:"T3", n:"Leg Extension", s:"3×12", r:"8" },
+      { id:"w8d1e5", t:"T3", n:"Ab Wheel", s:"3×12", r:"7" },
+    ]},
+    { name: "UPPER PRESS · PEAK", ex: [
+      { id:"w8d2e1", t:"T1", n:"Bench Press", s:"4×2", r:"8.5", note:"85% TM + back-off 2×4 @ 75%" },
+      { id:"w8d2e2", t:"T1", n:"OHP", s:"3×3", r:"8.5", note:"80% TM" },
+      { id:"w8d2e3", t:"T3", n:"BB Incline Press", s:"3×8", r:"8" },
+      { id:"w8d2e4", t:"T3", n:"Lateral Raise", s:"3×15", r:"8" },
+      { id:"w8d2e5", t:"T3", n:"Triceps Pushdown", s:"3×10", r:"8" },
+    ]},
+    { name: "LOWER HINGE · PEAK", ex: [
+      { id:"w8d3e1", t:"T1", n:"Conventional Deadlift", s:"3×2", r:"8.5", note:"83% TM · НЕ грайнд!" },
+      { id:"w8d3e2", t:"T2", n:"RDL", s:"3×6", r:"8", note:"72%" },
+      { id:"w8d3e3", t:"T3", n:"45° Back Ext.", s:"3×12", r:"8" },
+      { id:"w8d3e4", t:"T3", n:"Leg Curl", s:"3×10", r:"8" },
+      { id:"w8d3e5", t:"T3", n:"Hanging Leg Raise", s:"3×12", r:"7" },
+    ]},
+    { name: "UPPER PULL · PEAK", ex: [
+      { id:"w8d4e1", t:"T1", n:"Pendlay Row", s:"4×3", r:"8.5" },
+      { id:"w8d4e2", t:"T1", n:"Weighted Pull-up", s:"4×3", r:"8.5", note:"+12.5кг" },
+      { id:"w8d4e3", t:"T3", n:"Chest-Supported DB Row", s:"3×10", r:"8" },
+      { id:"w8d4e4", t:"T3", n:"Face Pull", s:"3×15", r:"7" },
+      { id:"w8d4e5", t:"T3", n:"Incline DB Curl", s:"3×10", r:"8" },
+    ]},
+    { name: "LOWER VOLUME · ZERCHER 80кг", ex: [
+      { id:"w8d5e1", t:"T2", n:"Zercher Squat", s:"5×3 @ 75-80кг", r:"7.5", note:"ПОТОЛОК 80кг · не тестим 1ПМ!" },
+      { id:"w8d5e2", t:"T3", n:"BSS", s:"3×10/ногу", r:"8" },
+      { id:"w8d5e3", t:"T3", n:"GHR", s:"3×10", r:"8" },
+      { id:"w8d5e4", t:"T3", n:"Sled Push", s:"4×30м", r:"8" },
+    ]},
+    { name: "UPPER VOLUME + ARMS", ex: [
+      { id:"w8d6e1", t:"T1", n:"Close-Grip Bench", s:"4×5", r:"8" },
+      { id:"w8d6e2", t:"T2", n:"Seated DB OHP", s:"3×8", r:"8" },
+      { id:"w8d6e3", t:"T3", n:"Ring Dip (+вес)", s:"3×8", r:"8" },
+      { id:"w8d6e4", t:"T3", n:"Cable Fly", s:"3×12/рука", r:"7" },
+      { id:"w8d6e5", t:"T3", n:"Spider Curl", s:"3×10", r:"8" },
+      { id:"w8d6e6", t:"T3", n:"OH Triceps Ext.", s:"3×12", r:"8" },
+      { id:"w8d6e7", t:"T3", n:"HIIT финишер (10 мин, опц)", s:"", r:"" },
+    ]},
+  ]};
+
+  // ═══ WEEK 9 — TAPER, объём −50%, интенсивность держим ════════════════
+  W[9] = { days: [
+    { name: "TAPER · SQUAT", ex: [
+      { id:"w9d1e1", t:"T1", n:"Back Squat", s:"Heavy Single", r:"8", note:"≈90% TM" },
+      { id:"w9d1e2", t:"T2", n:"Back Squat back-off", s:"2×3", r:"7", note:"75%" },
+      { id:"w9d1e3", t:"T3", n:"Stop.", s:"Ничего больше.", r:"" },
+    ]},
+    { name: "TAPER · BENCH + OHP", ex: [
+      { id:"w9d2e1", t:"T1", n:"Bench Press", s:"Heavy Single", r:"8", note:"≈90% TM" },
+      { id:"w9d2e2", t:"T2", n:"Bench back-off", s:"2×3", r:"7", note:"75%" },
+      { id:"w9d2e3", t:"T2", n:"OHP", s:"3×3", r:"7-8", note:"75%" },
+    ]},
+    { name: "TAPER · DEADLIFT", ex: [
+      { id:"w9d3e1", t:"T1", n:"Conventional DL", s:"Heavy Single", r:"8", note:"≈90% TM" },
+      { id:"w9d3e2", t:"T2", n:"Deadlift back-off", s:"2×2", r:"7", note:"75%" },
+      { id:"w9d3e3", t:"T3", n:"RDL (light)", s:"2×6", r:"6" },
+    ]},
+    { name: "TAPER · UPPER PULL", ex: [
+      { id:"w9d4e1", t:"T2", n:"Bench Technique", s:"2×3", r:"7-8", note:"80%" },
+      { id:"w9d4e2", t:"T2", n:"Pendlay Row", s:"3×5", r:"7" },
+      { id:"w9d4e3", t:"T3", n:"Pull-up", s:"3×3", r:"7", note:"БЕЗ AMRAP" },
+    ]},
+    { name: "REST · ZONE 2", ex: [
+      { id:"w9d5e1", t:"T3", n:"C2 Row Z2 20 мин", s:"лёгкий темп", r:"5" },
+      { id:"w9d5e2", t:"T3", n:"Мобильность 15 мин", s:"", r:"" },
+      { id:"w9d5e3", t:"T3", n:"БЕЗ Zercher на этой неделе!", s:"", r:"" },
+    ]},
+    { name: "TECHNICAL · ВСЕ ЛИФТЫ", ex: [
+      { id:"w9d6e1", t:"T3", n:"Squat 2×3 @ 70%", s:"техника, лёгко", r:"6" },
+      { id:"w9d6e2", t:"T3", n:"Bench 2×3 @ 70%", s:"техника", r:"6" },
+      { id:"w9d6e3", t:"T3", n:"OHP 2×3 @ 70%", s:"техника", r:"6" },
+      { id:"w9d6e4", t:"T3", n:"Pull-up 2×3", s:"BW", r:"6" },
+    ]},
+  ]};
+
+  // ═══ WEEK 10 — TEST 1RM ═══════════════════════════════════════════════
+  W[10] = { days: [
+    { name: "ТЕСТ · SQUAT 1ПМ", ex: [
+      { id:"w10d1e1", t:"T1", n:"Разминка: bike 10мин + динамика", s:"", r:"" },
+      { id:"w10d1e2", t:"T1", n:"Bar×8 → 40%×5 → 60%×3 → 75%×2", s:"", r:"6" },
+      { id:"w10d1e3", t:"T1", n:"85%×1 → 92%×1 → Opener 100% TM", s:"1×1", r:"8" },
+      { id:"w10d1e4", t:"T1", n:"+2.5кг attempt", s:"1×1", r:"8.5" },
+      { id:"w10d1e5", t:"T1", n:"🔥 +2.5кг NEW 1ПМ", s:"1×1", r:"9" },
+      { id:"w10d1e6", t:"T3", n:"GHD 2×10 (light cooldown)", s:"", r:"5" },
+    ]},
+    { name: "ПОЛНЫЙ ОТДЫХ", ex: [
+      { id:"w10d2e1", t:"T3", n:"КРИТИЧНО для CNS", s:"", r:"" },
+      { id:"w10d2e2", t:"T3", n:"Прогулка 30 мин · еда · сон", s:"", r:"" },
+    ]},
+    { name: "ТЕСТ · BENCH 1ПМ", ex: [
+      { id:"w10d3e1", t:"T1", n:"Разминка: band pull-apart + bar", s:"", r:"" },
+      { id:"w10d3e2", t:"T1", n:"Bar → 40%×5 → 60%×3 → 75%×2", s:"", r:"6" },
+      { id:"w10d3e3", t:"T1", n:"85%×1 → 92%×1 → Opener 100%", s:"1×1", r:"8" },
+      { id:"w10d3e4", t:"T1", n:"+2.5кг attempt", s:"1×1", r:"8.5" },
+      { id:"w10d3e5", t:"T1", n:"🔥 +2.5кг NEW 1ПМ", s:"1×1", r:"9" },
+      { id:"w10d3e6", t:"T3", n:"Pendlay Row (light)", s:"3×5 @ 60%", r:"6" },
+    ]},
+    { name: "ACTIVE RECOVERY", ex: [
+      { id:"w10d4e1", t:"T3", n:"C2 Row Z2 20 мин", s:"", r:"5" },
+      { id:"w10d4e2", t:"T3", n:"Мобильность", s:"", r:"" },
+    ]},
+    { name: "ТЕСТ · DEADLIFT 1ПМ", ex: [
+      { id:"w10d5e1", t:"T1", n:"Разминка: hip mobility + BW GM", s:"", r:"" },
+      { id:"w10d5e2", t:"T1", n:"40%×5 → 60%×3 → 75%×2", s:"", r:"6" },
+      { id:"w10d5e3", t:"T1", n:"85%×1 → 92%×1 → Opener 100%", s:"1×1", r:"8" },
+      { id:"w10d5e4", t:"T1", n:"+5кг attempt", s:"1×1", r:"8.5" },
+      { id:"w10d5e5", t:"T1", n:"🔥 +5кг NEW 1ПМ", s:"1×1", r:"9" },
+    ]},
+    { name: "ТЕСТ · OHP + ZERCHER", ex: [
+      { id:"w10d6e1", t:"T1", n:"OHP: 40%×5 → 60%×3 → 75%×2", s:"", r:"6" },
+      { id:"w10d6e2", t:"T1", n:"OHP 85%→92%→Opener→+2.5 NEW 1ПМ", s:"singles", r:"9" },
+      { id:"w10d6e3", t:"T2", n:"Zercher Technical Top", s:"1×1 @ 85-90кг", r:"8", note:"Working max, НЕ 1ПМ!" },
+      { id:"w10d6e4", t:"T3", n:"Pull-up AMRAP BW", s:"1×max", r:"10", note:"Для метрики" },
+    ]},
+  ]};
+
+  return W;
+}
+
+const PROG = buildProgram();
+
+// ═══ REST DAY (Sunday only) ════════════════════════════════════════════════
+const REST_EX = [
+  { id: "r1", n: "Планка фронтальная", s: "3×30-60 сек" },
+  { id: "r2", n: "Подъёмы ног лёжа", s: "3×15" },
+  { id: "r3", n: "Боковая планка", s: "2×30 сек/сторона" },
+  { id: "r4", n: "Мобильность плеч/бёдер", s: "10 мин" },
+  { id: "r5", n: "Прогулка на воздухе", s: "30-40 мин" },
+  { id: "r6", n: "Растяжка всего тела", s: "10 мин" },
+];
+
+// ═══ ICONS ═══════════════════════════════════════════════════════════════════
+const Icon = ({ name, size = 20, color = "currentColor", stroke = 2 }) => {
+  const paths = {
+    back: <><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></>,
+    calendar: <><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></>,
+    check: <polyline points="20 6 9 17 4 12"/>,
+    chevron: <polyline points="9 18 15 12 9 6"/>,
+  };
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round" style={{display:"block"}}>
+      {paths[name]}
+    </svg>
+  );
+};
+
+// ═══ APP ═════════════════════════════════════════════════════════════════════
+function App() {
+  const [state, setState] = useState(() => {
+    const s = storage.get("ironv4");
+    return {
+      startDate: s?.startDate || null,
+      completed: s?.completed || {},
+      weights: s?.weights || {},
+      rest: s?.rest || {},
+    };
+  });
+  const [view, setView] = useState("home");
+  const [selW, setSelW] = useState(null);
+  const [selD, setSelD] = useState(null);
+
+  const save = (s) => { setState(s); storage.set("ironv4", s); };
+  const toggle = (id) => save({...state, completed: {...state.completed, [id]: !state.completed[id]}});
+  const toggleRest = (k, id) => { const d = state.rest[k] || {}; save({...state, rest: {...state.rest, [k]: {...d, [id]: !d[id]}}}); };
+  const setW = (id, v) => save({...state, weights: {...state.weights, [id]: v}});
+
+  if (!state.startDate) {
+    return <Start onStart={(d) => save({...state, startDate: d})} />;
+  }
+
+  const now = new Date();
+  const start = new Date(state.startDate);
+  const daysSince = Math.floor((now - start) / 86400000);
+  const curWeek = Math.min(10, Math.max(1, Math.floor(daysSince/7) + 1));
+  const dayOfWeek = now.getDay(); // 0=Sun, 1=Mon ... 6=Sat
+
+  // Training days = Mon-Sat (dayOfWeek 1-6) → slot 0-5
+  // Sunday (0) = rest
+  const isTrainingToday = dayOfWeek >= 1 && dayOfWeek <= 6;
+  const isRestToday = dayOfWeek === 0;
+  const todayDayIdx = isTrainingToday ? dayOfWeek - 1 : null;
+
+  const allEx = Object.values(PROG).flatMap(w => w.days.flatMap(d => d.ex));
+  const totalDone = Object.values(state.completed).filter(Boolean).length;
+
+  // ═══ EXERCISE DAY VIEW ══════════════════════════════════════════════════
+  if (view === "day" && selW !== null && selD !== null) {
+    const wd = PROG[selW].days[selD];
+    const ph = getPhase(selW);
+    const doneCount = wd.ex.filter(e => state.completed[e.id]).length;
+    const allDone = doneCount === wd.ex.length;
+    const dowForSlot = SLOT_TO_DOW[selD];
+
+    return (
+      <div style={sc}>
+        <TopBar onBack={() => setView("home")}/>
+
+        <div style={{padding:`${SP.xl}px ${SP.xl}px 0`}}>
+          <h1 className="tbig" style={{
+            fontSize: 52,
+            color: C.text,
+            margin: 0,
+            textTransform: "uppercase",
+            lineHeight: 0.9
+          }}>
+            {DAY_NAMES_FULL[dowForSlot]}
+          </h1>
+          <div style={{
+            fontSize: 13,
+            color: C.textDim,
+            marginTop: SP.sm,
+            fontWeight: 500,
+            letterSpacing: 0.2
+          }}>
+            W{selW} · {ph.short} · <span style={{color: C.accent, fontWeight: 700}}>{wd.name}</span>
+          </div>
+
+          <div style={{marginTop: SP.lg, display: "flex", alignItems: "center", gap: SP.md}}>
+            <div style={{flex: 1, height: 3, background: C.border, borderRadius: 2, overflow: "hidden"}}>
+              <div style={{
+                height: "100%",
+                width: `${(doneCount/wd.ex.length)*100}%`,
+                background: allDone ? C.text : C.accent,
+                transition: "width .4s"
+              }}/>
+            </div>
+            <div style={{
+              fontSize: 13,
+              color: C.textDim,
+              fontWeight: 700,
+              fontVariantNumeric: "tabular-nums",
+              minWidth: 40,
+              textAlign: "right"
+            }}>
+              {doneCount}/{wd.ex.length}
+            </div>
+          </div>
+
+          {allDone && (
+            <div style={{
+              marginTop: SP.md,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "5px 10px",
+              background: C.text,
+              color: C.bg,
+              fontSize: 10,
+              fontWeight: 800,
+              letterSpacing: 1.5,
+              textTransform: "uppercase"
+            }}>
+              <Icon name="check" size={12} color={C.bg} stroke={3}/>
+              ВЫПОЛНЕНО
+            </div>
+          )}
+        </div>
+
+        <div style={{padding: `${SP.xl}px ${SP.xl}px ${SP.xxxl}px`, display: "flex", flexDirection: "column", gap: SP.xs}}>
+          {wd.ex.map(ex => {
+            const d = state.completed[ex.id];
+            return (
+              <div key={ex.id} style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: SP.md,
+                padding: `${SP.md}px 0`,
+                borderBottom: `1px solid ${C.border}`,
+                opacity: d ? 0.4 : 1,
+                transition: "opacity .2s"
+              }}>
+                <button onClick={() => toggle(ex.id)} style={{
+                  width: 22, height: 22, minWidth: 22,
+                  border: `1.5px solid ${d ? C.text : C.textDim}`,
+                  background: d ? C.text : "transparent",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  marginTop: 4, flexShrink: 0,
+                  borderRadius: 3,
+                  transition: "all .15s"
+                }}>
+                  {d && <Icon name="check" size={12} color={C.bg} stroke={3}/>}
+                </button>
+                <div style={{flex: 1, minWidth: 0}}>
+                  <div style={{
+                    fontSize: 15,
+                    fontWeight: 700,
+                    color: C.text,
+                    lineHeight: 1.3,
+                    textDecoration: d ? "line-through" : "none",
+                    textDecorationColor: C.accent,
+                    textDecorationThickness: "2px"
+                  }}>
+                    {ex.n}
+                  </div>
+                  <div style={{
+                    display: "flex",
+                    gap: SP.md,
+                    marginTop: 4,
+                    fontSize: 12,
+                    color: C.textDim,
+                    fontVariantNumeric: "tabular-nums",
+                    flexWrap: "wrap"
+                  }}>
+                    {ex.t && <span style={{fontWeight: 800, color: ex.t === "T1" ? C.text : C.textDim, letterSpacing: 0.5}}>{ex.t}</span>}
+                    {ex.s && <span style={{fontWeight: 600}}>{ex.s}</span>}
+                    {ex.r && <span>RPE {ex.r}</span>}
+                  </div>
+                  {ex.note && (
+                    <div style={{
+                      fontSize: 11,
+                      color: C.accent,
+                      marginTop: 4,
+                      fontWeight: 700,
+                      fontStyle: "italic"
+                    }}>
+                      → {ex.note}
+                    </div>
+                  )}
+                  <div style={{display: "flex", alignItems: "center", gap: 6, marginTop: 8}}>
+                    <span style={{fontSize: 10, color: C.textSoft, fontWeight: 600, textTransform: "uppercase", letterSpacing: 1}}>Вес</span>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      value={state.weights[ex.id] || ""}
+                      onChange={e => setW(ex.id, e.target.value)}
+                      placeholder="—"
+                      style={{
+                        width: 60,
+                        background: "transparent",
+                        border: "none",
+                        borderBottom: `1.5px solid ${C.border}`,
+                        color: C.text,
+                        padding: "3px 4px",
+                        fontSize: 14,
+                        fontWeight: 700,
+                        textAlign: "left",
+                        fontVariantNumeric: "tabular-nums",
+                        outline: "none"
+                      }}
+                    />
+                    <span style={{fontSize: 11, color: C.textSoft, fontWeight: 500}}>кг</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  // ═══ SUNDAY REST VIEW ═════════════════════════════════════════════════
+  if (view === "rest") {
+    const rk = `rest-${curWeek}`;
+    const rdata = state.rest[rk] || {};
+    const doneCount = REST_EX.filter(e => rdata[e.id]).length;
+    const allDone = doneCount === REST_EX.length;
+
+    return (
+      <div style={sc}>
+        <TopBar onBack={() => setView("home")}/>
+
+        <div style={{padding:`${SP.xl}px ${SP.xl}px 0`}}>
+          <h1 className="tbig" style={{
+            fontSize: 52,
+            color: C.text,
+            margin: 0,
+            textTransform: "uppercase"
+          }}>
+            ВОСКРЕСЕНЬЕ
+          </h1>
+          <div style={{fontSize: 13, color: C.textDim, marginTop: SP.sm, fontWeight: 500}}>
+            W{curWeek} · <span style={{color: C.rest, fontWeight: 700}}>ПОЛНЫЙ ОТДЫХ</span> · восстановление
+          </div>
+
+          <div style={{marginTop: SP.lg, display: "flex", alignItems: "center", gap: SP.md}}>
+            <div style={{flex: 1, height: 3, background: C.border, borderRadius: 2, overflow: "hidden"}}>
+              <div style={{
+                height: "100%",
+                width: `${(doneCount/REST_EX.length)*100}%`,
+                background: C.rest,
+                transition: "width .4s"
+              }}/>
+            </div>
+            <div style={{
+              fontSize: 13,
+              color: C.textDim,
+              fontWeight: 700,
+              fontVariantNumeric: "tabular-nums",
+              minWidth: 40,
+              textAlign: "right"
+            }}>
+              {doneCount}/{REST_EX.length}
+            </div>
+          </div>
+        </div>
+
+        <div style={{padding: `${SP.xl}px ${SP.xl}px ${SP.xxxl}px`, display: "flex", flexDirection: "column"}}>
+          {REST_EX.map(ex => {
+            const d = rdata[ex.id];
+            return (
+              <div key={ex.id} style={{
+                display: "flex",
+                alignItems: "center",
+                gap: SP.md,
+                padding: `${SP.md}px 0`,
+                borderBottom: `1px solid ${C.border}`,
+                opacity: d ? 0.4 : 1
+              }}>
+                <button onClick={() => toggleRest(rk, ex.id)} style={{
+                  width: 22, height: 22,
+                  border: `1.5px solid ${d ? C.rest : C.textDim}`,
+                  background: d ? C.rest : "transparent",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  flexShrink: 0,
+                  borderRadius: 3
+                }}>
+                  {d && <Icon name="check" size={12} color="#fff" stroke={3}/>}
+                </button>
+                <div style={{flex: 1}}>
+                  <div style={{
+                    fontSize: 15,
+                    fontWeight: 700,
+                    color: C.text,
+                    textDecoration: d ? "line-through" : "none",
+                    textDecorationColor: C.rest,
+                    textDecorationThickness: "2px"
+                  }}>
+                    {ex.n}
+                  </div>
+                  <div style={{fontSize: 12, color: C.textDim, marginTop: 2, fontWeight: 600}}>{ex.s}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  // ═══ CALENDAR VIEW (all 10 weeks) ══════════════════════════════════════
+  if (view === "calendar") {
+    return (
+      <div style={sc}>
+        <TopBar onBack={() => setView("home")} title="ПРОГРАММА"/>
+
+        <div style={{padding: `${SP.lg}px ${SP.xl}px 0`}}>
+          <h1 className="tbig" style={{fontSize: 48, color: C.text, margin: 0, textTransform: "uppercase"}}>
+            10 НЕДЕЛЬ
+          </h1>
+          <div style={{fontSize: 13, color: C.textDim, marginTop: SP.sm, fontWeight: 500}}>
+            Upper/Lower · 6 дней · Elevate Gym
+          </div>
+        </div>
+
+        <div style={{padding: `${SP.xl}px ${SP.xl}px ${SP.xxxl}px`}}>
+          {PHASES.map(phase => (
+            <div key={phase.name} style={{marginBottom: SP.xl}}>
+              <div style={{
+                display: "flex",
+                alignItems: "baseline",
+                justifyContent: "space-between",
+                marginBottom: SP.md,
+                paddingBottom: SP.sm,
+                borderBottom: `2px solid ${C.text}`
+              }}>
+                <div className="tbig" style={{fontSize: 20, textTransform: "uppercase", color: C.text}}>
+                  {phase.name}
+                </div>
+                <div style={{fontSize: 11, color: C.textDim, fontWeight: 700, letterSpacing: 1}}>
+                  W{phase.weeks.join(",")}
+                </div>
+              </div>
+
+              {phase.weeks.map(wn => {
+                const wd = PROG[wn];
+                const isCur = wn === curWeek;
+                const wEx = wd.days.flatMap(d => d.ex);
+                const done = wEx.filter(e => state.completed[e.id]).length;
+                const total = wEx.length;
+                const allDone = done === total && total > 0;
+
+                return (
+                  <div key={wn} style={{
+                    padding: `${SP.md}px 0`,
+                    borderBottom: `1px solid ${C.border}`
+                  }}>
+                    <div style={{display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: SP.sm}}>
+                      <div style={{display: "flex", alignItems: "baseline", gap: SP.sm}}>
+                        <div className="tbig" style={{fontSize: 28, color: isCur ? C.accent : C.text, fontVariantNumeric: "tabular-nums"}}>
+                          W{wn}
+                        </div>
+                        {isCur && (
+                          <div style={{
+                            fontSize: 9, fontWeight: 800, letterSpacing: 1.5,
+                            color: C.accent, textTransform: "uppercase"
+                          }}>
+                            СЕЙЧАС
+                          </div>
+                        )}
+                      </div>
+                      <div style={{
+                        fontSize: 12, fontWeight: 700,
+                        color: allDone ? C.text : C.textDim,
+                        fontVariantNumeric: "tabular-nums"
+                      }}>
+                        {done}/{total}
+                      </div>
+                    </div>
+
+                    <WeekDotsRow
+                      week={wn}
+                      state={state}
+                      onSelect={(type, i) => { setSelW(wn); setSelD(i); setView(type); }}
+                      todayDow={isCur ? dayOfWeek : null}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // ═══ HOME VIEW ═══════════════════════════════════════════════════════════
+  const phase = getPhase(curWeek);
+  const todayDay = isTrainingToday ? PROG[curWeek].days[todayDayIdx] : null;
+  const todayDone = todayDay ? todayDay.ex.filter(e => state.completed[e.id]).length : 0;
+  const todayTotal = todayDay ? todayDay.ex.length : 0;
+
+  const todayRestKey = isRestToday ? `rest-${curWeek}` : null;
+  const todayRestData = todayRestKey ? (state.rest[todayRestKey] || {}) : {};
+  const todayRestDone = REST_EX.filter(e => todayRestData[e.id]).length;
+
+  const today = new Date();
+  const todayStr = `${today.getDate()} ${MONTHS_RU[today.getMonth()]} ${today.getFullYear()}`;
+
+  return (
+    <div style={sc}>
+      <div style={{padding: `${SP.xl}px ${SP.xl}px ${SP.lg}px`}}>
+        <div style={{display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: SP.md}}>
+          <div style={{flex: 1, minWidth: 0}}>
+            <h1 className="tbig" style={{
+              fontSize: 52,
+              color: C.text,
+              margin: 0,
+              textTransform: "uppercase",
+              lineHeight: 0.85
+            }}>
+              {DAY_NAMES_FULL[dayOfWeek]}
+            </h1>
+            <div style={{
+              fontSize: 13,
+              color: C.textDim,
+              marginTop: SP.md,
+              fontWeight: 500,
+              letterSpacing: 0.2
+            }}>
+              {todayStr} <span style={{color: C.textSoft}}>·</span> W{curWeek}/10 <span style={{color: C.textSoft}}>·</span> <span style={{color: isTrainingToday ? C.accent : C.rest, fontWeight: 700}}>{phase.short}</span>
+            </div>
+          </div>
+          <button onClick={() => setView("calendar")} style={{
+            width: 40, height: 40,
+            borderRadius: 10,
+            background: C.text,
+            color: C.bg,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            flexShrink: 0
+          }}>
+            <Icon name="calendar" size={18} color={C.bg}/>
+          </button>
+        </div>
+      </div>
+
+      {/* TODAY'S TRAINING */}
+      {isTrainingToday && todayDay && (
+        <div style={{padding: `0 ${SP.xl}px`, marginBottom: SP.xl}}>
+          <button onClick={() => { setSelW(curWeek); setSelD(todayDayIdx); setView("day"); }}
+            style={{
+              width: "100%",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "flex-start",
+              background: "transparent",
+              padding: 0,
+              textAlign: "left"
+            }}>
+            {todayDay.ex.slice(0, 7).map((ex) => {
+              const d = state.completed[ex.id];
+              return (
+                <div key={ex.id} style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: SP.md,
+                  padding: "9px 0",
+                  width: "100%"
+                }}>
+                  <div style={{
+                    width: 18, height: 18,
+                    border: `1.5px solid ${d ? C.accent : C.textDim}`,
+                    background: d ? C.accent : "transparent",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    flexShrink: 0,
+                    borderRadius: 3
+                  }}>
+                    {d && <Icon name="check" size={11} color="#fff" stroke={3}/>}
+                  </div>
+                  <div style={{
+                    fontSize: 15,
+                    fontWeight: 600,
+                    color: d ? C.textDim : C.text,
+                    textDecoration: d ? "line-through" : "none",
+                    textDecorationColor: C.accent,
+                    textDecorationThickness: "2px",
+                    flex: 1,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap"
+                  }}>
+                    {ex.n}
+                  </div>
+                  <div style={{
+                    fontSize: 10,
+                    color: C.textSoft,
+                    fontWeight: 700,
+                    fontVariantNumeric: "tabular-nums"
+                  }}>
+                    {ex.s || "—"}
+                  </div>
+                </div>
+              );
+            })}
+
+            {todayDay.ex.length > 7 && (
+              <div style={{fontSize: 11, color: C.textSoft, padding: "4px 0", fontWeight: 600}}>
+                +{todayDay.ex.length - 7} ещё упражнений
+              </div>
+            )}
+
+            <div style={{
+              marginTop: SP.md,
+              paddingTop: SP.md,
+              borderTop: `1px solid ${C.border}`,
+              width: "100%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between"
+            }}>
+              <div style={{fontSize: 11, color: C.textSoft, fontWeight: 700, letterSpacing: 1, textTransform: "uppercase"}}>
+                {todayDone}/{todayTotal} · {todayDay.name}
+              </div>
+              <Icon name="chevron" size={14} color={C.textSoft} stroke={2.5}/>
+            </div>
+          </button>
+        </div>
+      )}
+
+      {isRestToday && (
+        <div style={{padding: `0 ${SP.xl}px`, marginBottom: SP.xl}}>
+          <button onClick={() => setView("rest")}
+            style={{
+              width: "100%",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "flex-start",
+              background: "transparent",
+              padding: 0,
+              textAlign: "left"
+            }}>
+            {REST_EX.map(ex => {
+              const d = todayRestData[ex.id];
+              return (
+                <div key={ex.id} style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: SP.md,
+                  padding: "9px 0",
+                  width: "100%"
+                }}>
+                  <div style={{
+                    width: 18, height: 18,
+                    border: `1.5px solid ${d ? C.rest : C.textDim}`,
+                    background: d ? C.rest : "transparent",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    flexShrink: 0,
+                    borderRadius: 3
+                  }}>
+                    {d && <Icon name="check" size={11} color="#fff" stroke={3}/>}
+                  </div>
+                  <div style={{
+                    fontSize: 15,
+                    fontWeight: 600,
+                    color: d ? C.textDim : C.text,
+                    textDecoration: d ? "line-through" : "none",
+                    textDecorationColor: C.rest,
+                    textDecorationThickness: "2px",
+                    flex: 1
+                  }}>
+                    {ex.n}
+                  </div>
+                  <div style={{
+                    fontSize: 11,
+                    color: C.textSoft,
+                    fontWeight: 600,
+                    fontVariantNumeric: "tabular-nums"
+                  }}>
+                    {ex.s}
+                  </div>
+                </div>
+              );
+            })}
+            <div style={{
+              marginTop: SP.md,
+              paddingTop: SP.md,
+              borderTop: `1px solid ${C.border}`,
+              width: "100%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between"
+            }}>
+              <div style={{fontSize: 11, color: C.textSoft, fontWeight: 700, letterSpacing: 1, textTransform: "uppercase"}}>
+                {todayRestDone}/{REST_EX.length} · ПОЛНЫЙ ОТДЫХ
+              </div>
+              <Icon name="chevron" size={14} color={C.textSoft} stroke={2.5}/>
+            </div>
+          </button>
+        </div>
+      )}
+
+      {/* WEEK DAYS STRIP — layered gradient strips like reference */}
+      <div style={{marginTop: SP.md}}>
+        {[
+          { dow: 1, idx: 0, label: "ПОНЕДЕЛЬНИК" },
+          { dow: 2, idx: 1, label: "ВТОРНИК" },
+          { dow: 3, idx: 2, label: "СРЕДА" },
+          { dow: 4, idx: 3, label: "ЧЕТВЕРГ" },
+          { dow: 5, idx: 4, label: "ПЯТНИЦА" },
+          { dow: 6, idx: 5, label: "СУББОТА" },
+          { dow: 0, idx: -1, label: "ВОСКРЕСЕНЬЕ", isRest: true },
+        ].filter(d => d.dow !== dayOfWeek).map((d, i) => {
+          const shade = 238 - (i * 5);
+          const bg = `rgb(${shade}, ${shade - 2}, ${shade - 6})`;
+
+          let itemCount = 0;
+          let itemDone = 0;
+
+          if (d.isRest) {
+            const rk = `rest-${curWeek}`;
+            const rd = state.rest[rk] || {};
+            itemCount = REST_EX.length;
+            itemDone = REST_EX.filter(e => rd[e.id]).length;
+          } else {
+            const day = PROG[curWeek].days[d.idx];
+            if (day) {
+              itemCount = day.ex.length;
+              itemDone = day.ex.filter(e => state.completed[e.id]).length;
+            }
+          }
+          const isComplete = itemDone === itemCount && itemCount > 0;
+
+          return (
+            <button key={d.dow} onClick={() => {
+              if (d.isRest) {
+                setView("rest");
+              } else {
+                setSelW(curWeek);
+                setSelD(d.idx);
+                setView("day");
+              }
+            }} style={{
+              width: "100%",
+              background: bg,
+              padding: `22px ${SP.xl}px`,
+              textAlign: "left",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: SP.md,
+              border: "none"
+            }}>
+              <div className="tbig" style={{
+                fontSize: 26,
+                color: C.text,
+                textTransform: "uppercase"
+              }}>
+                {d.label}
+              </div>
+              <div style={{display: "flex", alignItems: "center", gap: SP.md}}>
+                {isComplete && (
+                  <div style={{
+                    width: 6, height: 6, borderRadius: 3,
+                    background: d.isRest ? C.rest : C.text
+                  }}/>
+                )}
+                <div style={{
+                  fontSize: 11,
+                  color: C.textDim,
+                  fontWeight: 700,
+                  fontVariantNumeric: "tabular-nums",
+                  letterSpacing: 0.5
+                }}>
+                  {itemDone}/{itemCount}
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      <div style={{padding: SP.xl, textAlign: "center"}}>
+        <button
+          onClick={() => { if(confirm("Сбросить весь прогресс?")) save({startDate:null, completed:{}, weights:{}, rest:{}}); }}
+          style={{
+            background:"transparent",
+            color: C.textSoft,
+            padding: "8px 16px",
+            fontSize: 11,
+            fontWeight: 500,
+            textTransform: "uppercase",
+            letterSpacing: 1
+          }}>
+          сбросить прогресс
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ═══ WEEK DOTS ROW ══════════════════════════════════════════════════════════
+function WeekDotsRow({ week, state, onSelect, todayDow }) {
+  const days = [
+    { dow: 1, idx: 0, letter: "П" },
+    { dow: 2, idx: 1, letter: "В" },
+    { dow: 3, idx: 2, letter: "С" },
+    { dow: 4, idx: 3, letter: "Ч" },
+    { dow: 5, idx: 4, letter: "П" },
+    { dow: 6, idx: 5, letter: "С" },
+    { dow: 0, idx: -1, letter: "В", isRest: true },
+  ];
+
+  return (
+    <div style={{display: "flex", gap: 6, alignItems: "center"}}>
+      {days.map(d => {
+        const isToday = d.dow === todayDow;
+        let isDone = false;
+        let hasProgress = false;
+
+        if (d.isRest) {
+          const rk = `rest-${week}`;
+          const rd = state.rest[rk] || {};
+          const done = REST_EX.filter(e => rd[e.id]).length;
+          isDone = done === REST_EX.length;
+          hasProgress = done > 0;
+        } else {
+          const day = PROG[week].days[d.idx];
+          if (day) {
+            const done = day.ex.filter(e => state.completed[e.id]).length;
+            isDone = done === day.ex.length;
+            hasProgress = done > 0;
+          }
+        }
+
+        let dotBg, dotBorder;
+        if (isToday) {
+          dotBg = C.accent; dotBorder = C.accent;
+        } else if (isDone) {
+          dotBg = d.isRest ? C.rest : C.text;
+          dotBorder = dotBg;
+        } else if (hasProgress) {
+          dotBg = C.textSoft; dotBorder = C.textSoft;
+        } else {
+          dotBg = "transparent"; dotBorder = C.border;
+        }
+
+        return (
+          <button key={d.dow} onClick={() => d.isRest ? null : onSelect("day", d.idx)}
+            style={{
+              width: 26, height: 26,
+              borderRadius: "50%",
+              background: dotBg,
+              border: `1.5px solid ${dotBorder}`,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 10,
+              fontWeight: 800,
+              color: (isDone || isToday) ? "#fff" : C.textDim,
+              cursor: d.isRest ? "default" : "pointer",
+              flex: "0 0 auto"
+            }}>
+            {d.letter}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ═══ TOP BAR ═══════════════════════════════════════════════════════════════
+function TopBar({ onBack, title }) {
+  return (
+    <div style={{
+      display: "flex",
+      alignItems: "center",
+      padding: `${SP.md}px ${SP.xl}px`,
+      gap: SP.md
+    }}>
+      <button onClick={onBack} style={{
+        width: 36, height: 36,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        background: "transparent",
+        color: C.text
+      }}>
+        <Icon name="back" size={20}/>
+      </button>
+      {title && (
+        <div style={{
+          fontSize: 11,
+          fontWeight: 800,
+          letterSpacing: 1.5,
+          color: C.textDim
+        }}>
+          {title}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══ START SCREEN ═════════════════════════════════════════════════════════
+function Start({ onStart }) {
+  const today = new Date().toISOString().split("T")[0];
+  const [date, setDate] = useState(today);
+
+  return (
+    <div style={{
+      minHeight: "100vh",
+      background: C.bg,
+      display: "flex",
+      flexDirection: "column",
+      justifyContent: "space-between",
+      padding: `${SP.xxxl}px ${SP.xl}px`,
+      boxSizing: "border-box"
+    }}>
+      <div>
+        <div style={{
+          width: 44, height: 44,
+          background: C.text,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          borderRadius: 10,
+          marginBottom: SP.xxl
+        }}>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={C.bg} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M6.5 6.5h11v11h-11z"/>
+            <path d="M6.5 6.5L3 3m14.5 3.5L21 3m-14.5 14.5L3 21m14.5-3.5L21 21"/>
+          </svg>
+        </div>
+
+        <h1 className="tbig" style={{
+          fontSize: 64,
+          color: C.text,
+          margin: 0,
+          lineHeight: 0.85
+        }}>
+          IRON<br/>
+          <span style={{color: C.accent}}>PROTOCOL</span>
+        </h1>
+
+        <div style={{
+          fontSize: 14,
+          color: C.textDim,
+          marginTop: SP.lg,
+          fontWeight: 500,
+          lineHeight: 1.5,
+          maxWidth: 280
+        }}>
+          10 недель · 6 дней · возврат к PR. Evidence-based. Под Elevate Gym.
+        </div>
+      </div>
+
+      <div>
+        <div style={{
+          fontSize: 11,
+          fontWeight: 700,
+          color: C.textDim,
+          marginBottom: SP.sm,
+          textTransform: "uppercase",
+          letterSpacing: 1.5
+        }}>
+          Дата старта
+        </div>
+        <input type="date" value={date} onChange={e => setDate(e.target.value)}
+          style={{
+            width: "100%",
+            background: "transparent",
+            border: "none",
+            borderBottom: `2px solid ${C.text}`,
+            color: C.text,
+            padding: "12px 0",
+            fontSize: 20,
+            fontWeight: 700,
+            marginBottom: SP.xxl,
+            fontVariantNumeric: "tabular-nums",
+            outline: "none"
+          }}/>
+        <button onClick={() => onStart(date)} style={{
+          width: "100%",
+          background: C.text,
+          color: C.bg,
+          padding: "20px",
+          fontSize: 15,
+          fontWeight: 800,
+          letterSpacing: 2,
+          textTransform: "uppercase",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: SP.sm,
+          borderRadius: 2
+        }}>
+          Начать
+          <Icon name="chevron" size={16} color={C.bg} stroke={2.5}/>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+const sc = {
+  maxWidth: 480,
+  margin: "0 auto",
+  background: C.bg,
+  minHeight: "100vh",
+  color: C.text
+};
+
+ReactDOM.render(<App/>, document.getElementById("root"));
+</script>
+</body>
+</html>
