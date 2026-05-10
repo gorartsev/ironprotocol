@@ -1,8 +1,8 @@
 {
-  "name": "MATRIX Protocol",
-  "short_name": "MATRIX",
-  "description": "20-сессионный протокол перестройки матрицы по Брейдену",
-  "start_url": "./index.html",
+  "name": "IRON Protocol",
+  "short_name": "IRON",
+  "description": "16-недельная программа силы и гипертрофии",
+  "start_url": "./iron.html",
   "display": "standalone",
   "background_color": "#EFEBE4",
   "theme_color": "#EFEBE4",
